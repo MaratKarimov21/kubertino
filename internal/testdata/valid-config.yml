@@ -1,0 +1,23 @@
+version: "1.0"
+contexts:
+  - name: test-context
+    kubeconfig: ~/.kube/config
+    cluster_url: https://k8s.test.example.com
+    default_pod_pattern: "^api-.*"
+    favorite_namespaces:
+      - default
+      - api
+    actions:
+      - name: Console
+        shortcut: c
+        type: pod_exec
+        command: /bin/sh
+        pod_pattern: "^api-.*"
+      - name: Grafana
+        shortcut: g
+        type: url
+        url: https://grafana.example.com
+      - name: Port Forward
+        shortcut: p
+        type: local
+        command: kubectl port-forward pod 8080:8080

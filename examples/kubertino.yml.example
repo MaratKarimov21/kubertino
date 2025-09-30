@@ -1,0 +1,111 @@
+# Kubertino Configuration File
+# Copy this file to ~/.kubertino.yml and customize for your environment
+
+version: "1.0"
+
+contexts:
+  # Production context
+  - name: production
+    # Path to kubeconfig file (defaults to ~/.kube/config if not specified)
+    kubeconfig: ~/.kube/config
+
+    # Cluster dashboard URL (optional, used for URL actions)
+    cluster_url: https://k8s.prod.example.com
+
+    # Default regex pattern for matching pods
+    # This determines which pod is selected when an action doesn't specify pod_pattern
+    default_pod_pattern: "^api-.*"
+
+    # List of namespaces to show at the top of the namespace list
+    favorite_namespaces:
+      - default
+      - api
+      - workers
+      - monitoring
+
+    # Available actions with keyboard shortcuts
+    actions:
+      # pod_exec action: Execute a command in a pod
+      - name: Console
+        shortcut: c
+        type: pod_exec
+        command: /bin/sh
+        # Optional: Override default_pod_pattern for this action
+        pod_pattern: "^api-.*"
+
+      - name: Bash
+        shortcut: b
+        type: pod_exec
+        command: /bin/bash
+        pod_pattern: "^api-.*"
+
+      - name: Rails Console
+        shortcut: r
+        type: pod_exec
+        command: bundle exec rails console
+        pod_pattern: "^api-.*"
+
+      - name: Logs
+        shortcut: l
+        type: pod_exec
+        command: tail -f /var/log/app.log
+
+      # url action: Open a URL in browser
+      - name: Grafana Dashboard
+        shortcut: g
+        type: url
+        url: https://grafana.example.com/d/pod-metrics?var-pod={{.Pod}}
+
+      - name: Kibana Logs
+        shortcut: k
+        type: url
+        url: https://kibana.example.com/app/discover#/?_g=(filters:!((pod:'{{.Pod}}')))
+
+      # local action: Execute a local command
+      - name: Port Forward
+        shortcut: p
+        type: local
+        command: kubectl port-forward {{.Pod}} 8080:8080
+
+  # Staging context
+  - name: staging
+    kubeconfig: ~/.kube/config
+    cluster_url: https://k8s.staging.example.com
+    default_pod_pattern: "^web-.*"
+    favorite_namespaces:
+      - default
+      - staging-api
+    actions:
+      - name: Shell
+        shortcut: s
+        type: pod_exec
+        command: /bin/sh
+
+      - name: Debug
+        shortcut: d
+        type: pod_exec
+        command: /bin/bash -l
+
+  # Development context (local minikube/kind)
+  - name: minikube
+    kubeconfig: ~/.kube/config
+    default_pod_pattern: ".*"
+    favorite_namespaces:
+      - default
+      - dev
+    actions:
+      - name: Shell
+        shortcut: s
+        type: pod_exec
+        command: /bin/sh
+
+      - name: Logs
+        shortcut: l
+        type: local
+        command: kubectl logs -f {{.Pod}}
+
+# Template Variables Available in Actions:
+# {{.Context}}    - Current Kubernetes context name
+# {{.Namespace}}  - Selected namespace
+# {{.Pod}}        - Selected pod name
+# {{.ClusterURL}} - Cluster URL from context configuration

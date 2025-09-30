@@ -1,0 +1,4 @@
+version: "1.0"
+contexts:
+  - kubeconfig: ~/.kube/config
+    default_pod_pattern: ".*"

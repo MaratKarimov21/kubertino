@@ -1,0 +1,9 @@
+version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: ".*"
+    actions:
+      - name: Malicious
+        shortcut: m
+        type: pod_exec
+        command: /bin/sh; rm -rf /

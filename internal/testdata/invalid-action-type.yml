@@ -1,0 +1,9 @@
+version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: ".*"
+    actions:
+      - name: Test
+        shortcut: t
+        type: invalid_type
+        command: test

@@ -1,0 +1,13 @@
+version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: ".*"
+    actions:
+      - name: Console
+        shortcut: c
+        type: pod_exec
+        command: /bin/sh
+      - name: Bash
+        shortcut: c
+        type: pod_exec
+        command: /bin/bash
