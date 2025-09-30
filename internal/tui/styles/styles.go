@@ -21,4 +21,16 @@ var (
 	// White color
 	NormalStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("15")) // White
+
+	// SelectedStyle is used for highlighting selected items
+	// Bright cyan background with black text and bold
+	SelectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("0")).  // Black
+			Background(lipgloss.Color("14")). // Bright cyan
+			Bold(true)
+
+	// DimStyle is used for secondary/dim text
+	// Gray color
+	DimStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")) // Gray
 )

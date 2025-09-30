@@ -11,22 +11,43 @@ import (
 )
 
 func TestNewAppModel(t *testing.T) {
-	cfg := &config.Config{
-		Version: "1.0",
-		Contexts: []config.Context{
-			{Name: "test-context"},
-		},
-	}
+	t.Run("single context auto-selects", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "test-context"},
+			},
+		}
 
-	model := NewAppModel(cfg)
+		model := NewAppModel(cfg)
 
-	assert.NotNil(t, model.config, "config should be set")
-	assert.Equal(t, cfg, model.config, "config should match")
-	assert.Nil(t, model.currentContext, "currentContext should be nil initially")
-	assert.Nil(t, model.err, "err should be nil initially")
-	assert.Equal(t, 0, model.width, "width should be 0 initially")
-	assert.Equal(t, 0, model.height, "height should be 0 initially")
-	assert.NotNil(t, model.keys, "keys should be initialized")
+		assert.NotNil(t, model.config, "config should be set")
+		assert.Equal(t, cfg, model.config, "config should match")
+		assert.NotNil(t, model.currentContext, "currentContext should be auto-selected")
+		assert.Equal(t, "test-context", model.currentContext.Name, "should auto-select single context")
+		assert.Equal(t, viewModeNamespaceView, model.viewMode, "should skip to namespace_view")
+		assert.Nil(t, model.err, "err should be nil initially")
+		assert.NotNil(t, model.keys, "keys should be initialized")
+	})
+
+	t.Run("multiple contexts show selection screen", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "context1"},
+				{Name: "context2"},
+				{Name: "context3"},
+			},
+		}
+
+		model := NewAppModel(cfg)
+
+		assert.NotNil(t, model.config, "config should be set")
+		assert.Nil(t, model.currentContext, "currentContext should be nil")
+		assert.Equal(t, viewModeContextSelection, model.viewMode, "should be in context_selection mode")
+		assert.Equal(t, 0, model.selectedContextIndex, "should start at index 0")
+		assert.Len(t, model.contexts, 3, "should have 3 contexts")
+	})
 }
 
 func TestAppModel_Init(t *testing.T) {
@@ -114,6 +135,119 @@ func TestAppModel_Update_KeyHandling(t *testing.T) {
 				// For non-quit keys, we expect nil command or the model unchanged
 				assert.NotNil(t, newModel, "Model should not be nil")
 			}
+		})
+	}
+}
+
+func TestAppModel_ContextSelection_Navigation(t *testing.T) {
+	tests := []struct {
+		name          string
+		initialIndex  int
+		keyType       tea.KeyType
+		expectedIndex int
+	}{
+		{
+			name:          "down arrow increments index",
+			initialIndex:  0,
+			keyType:       tea.KeyDown,
+			expectedIndex: 1,
+		},
+		{
+			name:          "down arrow wraps around at end",
+			initialIndex:  2,
+			keyType:       tea.KeyDown,
+			expectedIndex: 0,
+		},
+		{
+			name:          "up arrow decrements index",
+			initialIndex:  1,
+			keyType:       tea.KeyUp,
+			expectedIndex: 0,
+		},
+		{
+			name:          "up arrow wraps around at start",
+			initialIndex:  0,
+			keyType:       tea.KeyUp,
+			expectedIndex: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Contexts: []config.Context{
+					{Name: "context1"},
+					{Name: "context2"},
+					{Name: "context3"},
+				},
+			}
+			model := NewAppModel(cfg)
+			model.selectedContextIndex = tt.initialIndex
+
+			keyMsg := tea.KeyMsg{Type: tt.keyType}
+			newModel, _ := model.Update(keyMsg)
+			m := newModel.(AppModel)
+
+			assert.Equal(t, tt.expectedIndex, m.selectedContextIndex, "index should be updated correctly")
+			assert.Equal(t, viewModeContextSelection, m.viewMode, "should remain in context_selection mode")
+		})
+	}
+}
+
+func TestAppModel_ContextSelection_EnterKey(t *testing.T) {
+	cfg := &config.Config{
+		Contexts: []config.Context{
+			{Name: "context1"},
+			{Name: "context2"},
+			{Name: "context3"},
+		},
+	}
+	model := NewAppModel(cfg)
+	model.selectedContextIndex = 1
+
+	keyMsg := tea.KeyMsg{Type: tea.KeyEnter}
+	newModel, cmd := model.Update(keyMsg)
+	m := newModel.(AppModel)
+
+	assert.NotNil(t, m.currentContext, "currentContext should be set")
+	assert.Equal(t, "context2", m.currentContext.Name, "should select context at index 1")
+	assert.Equal(t, viewModeNamespaceView, m.viewMode, "should transition to namespace_view")
+	assert.Nil(t, cmd, "should not return a command")
+}
+
+func TestAppModel_ContextSelection_QuitKeys(t *testing.T) {
+	tests := []struct {
+		name    string
+		keyType tea.KeyType
+		keyStr  string
+	}{
+		{"quit with q", tea.KeyRunes, "q"},
+		{"quit with esc", tea.KeyEsc, "esc"},
+		{"quit with ctrl+c", tea.KeyCtrlC, "ctrl+c"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Contexts: []config.Context{
+					{Name: "context1"},
+					{Name: "context2"},
+				},
+			}
+			model := NewAppModel(cfg)
+
+			var keyMsg tea.KeyMsg
+			if tt.keyType == tea.KeyRunes {
+				keyMsg = tea.KeyMsg{Type: tt.keyType, Runes: []rune(tt.keyStr)}
+			} else {
+				keyMsg = tea.KeyMsg{Type: tt.keyType}
+			}
+
+			_, cmd := model.Update(keyMsg)
+
+			assert.NotNil(t, cmd, "should return quit command")
+			msg := cmd()
+			assert.IsType(t, tea.QuitMsg{}, msg, "should return QuitMsg")
 		})
 	}
 }
@@ -239,6 +373,45 @@ func TestAppModel_View_ResponsiveLayout(t *testing.T) {
 	}
 }
 
+func TestAppModel_View_ContextSelection(t *testing.T) {
+	t.Run("shows context selection screen", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "production", FavoriteNamespaces: []string{"default", "api"}},
+				{Name: "staging"},
+				{Name: "development", FavoriteNamespaces: []string{"default"}},
+			},
+		}
+		model := NewAppModel(cfg)
+		model.selectedContextIndex = 0
+
+		view := model.View()
+
+		assert.Contains(t, view, "Select Kubernetes Context", "should show header")
+		assert.Contains(t, view, "production", "should show context name")
+		assert.Contains(t, view, "staging", "should show second context")
+		assert.Contains(t, view, "development", "should show third context")
+		assert.Contains(t, view, "2 namespaces", "should show namespace count for production")
+		assert.Contains(t, view, "1 namespaces", "should show namespace count for development")
+		assert.Contains(t, view, "↑/↓ Navigate", "should show navigation hint")
+		assert.Contains(t, view, "Enter: Select", "should show selection hint")
+	})
+
+	t.Run("switches to namespace view after context selection", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "test-context"},
+			},
+		}
+		model := NewAppModel(cfg)
+
+		view := model.View()
+
+		assert.NotContains(t, view, "Select Kubernetes Context", "should not show context selection")
+		// Should show the basic layout instead (namespace_view mode)
+	})
+}
+
 func TestKeyMatches(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -293,6 +466,17 @@ func TestDefaultKeyMap(t *testing.T) {
 	assert.Contains(t, keyMap.Quit, "q", "Should contain 'q' key")
 	assert.Contains(t, keyMap.Quit, "esc", "Should contain 'esc' key")
 	assert.Contains(t, keyMap.Quit, "ctrl+c", "Should contain 'ctrl+c' key")
+
+	assert.NotNil(t, keyMap.Up, "Up keys should be defined")
+	assert.Contains(t, keyMap.Up, "up", "Should contain 'up' key")
+	assert.Contains(t, keyMap.Up, "k", "Should contain 'k' key")
+
+	assert.NotNil(t, keyMap.Down, "Down keys should be defined")
+	assert.Contains(t, keyMap.Down, "down", "Should contain 'down' key")
+	assert.Contains(t, keyMap.Down, "j", "Should contain 'j' key")
+
+	assert.NotNil(t, keyMap.Enter, "Enter keys should be defined")
+	assert.Contains(t, keyMap.Enter, "enter", "Should contain 'enter' key")
 }
 
 // testError is a simple error implementation for testing

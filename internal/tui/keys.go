@@ -4,13 +4,19 @@ import tea "github.com/charmbracelet/bubbletea"
 
 // KeyMap defines keyboard bindings for the TUI
 type KeyMap struct {
-	Quit []string // Keys that trigger quit (q, esc, ctrl+c)
+	Quit  []string // Keys that trigger quit (q, esc, ctrl+c)
+	Up    []string // Keys for navigating up (up arrow, k)
+	Down  []string // Keys for navigating down (down arrow, j)
+	Enter []string // Keys for selection (enter)
 }
 
 // DefaultKeyMap returns the default keyboard bindings
 func DefaultKeyMap() KeyMap {
 	return KeyMap{
-		Quit: []string{"q", "esc", "ctrl+c"},
+		Quit:  []string{"q", "esc", "ctrl+c"},
+		Up:    []string{"up", "k"},
+		Down:  []string{"down", "j"},
+		Enter: []string{"enter"},
 	}
 }
 
