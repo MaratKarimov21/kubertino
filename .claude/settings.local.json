@@ -3,7 +3,11 @@
     "allow": [
       "WebFetch(domain:github.com)",
       "WebFetch(domain:pkg.go.dev)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(go mod init:*)",
+      "Bash(go test:*)",
+      "Bash(make test:*)",
+      "Bash(make lint:*)"
     ],
     "deny": [],
     "ask": []

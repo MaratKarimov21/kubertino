@@ -1,0 +1,42 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+
+# Go workspace file
+go.work
+
+# Kubertino binary
+kubertino
+
+# Dependency directories
+vendor/
+
+# IDE directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs directory
+logs/
+*.log
+
+# Build artifacts
+dist/
+build/
+
+# Temporary files
+tmp/
+temp/
