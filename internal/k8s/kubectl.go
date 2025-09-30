@@ -1,11 +1,16 @@
 package k8s
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/maratkarimov/kubertino/internal/config"
 
@@ -17,6 +22,9 @@ var (
 	ErrKubeconfigNotFound = errors.New("kubeconfig file not found")
 	ErrContextNotFound    = errors.New("context not found")
 	ErrInvalidKubeconfig  = errors.New("invalid kubeconfig format")
+	ErrKubectlNotFound    = errors.New("kubectl not found in PATH")
+	ErrPermissionDenied   = errors.New("permission denied")
+	ErrTimeout            = errors.New("operation timeout")
 )
 
 // KubectlAdapter implements KubeAdapter by reading kubeconfig files
@@ -59,9 +67,96 @@ func (k *KubectlAdapter) GetContexts() ([]string, error) {
 	return contexts, nil
 }
 
-// GetNamespaces is a placeholder for future implementation
-func (k *KubectlAdapter) GetNamespaces(context string) ([]string, error) {
-	return nil, errors.New("not implemented")
+// validateContextName validates a context name against allowed characters
+// to prevent potential security issues. Allows common Kubernetes context name patterns
+// including cluster/user notation (with /), email-based auth (with @), and various separators.
+// Prevents only shell metacharacters that could cause issues with exec.CommandContext.
+func validateContextName(name string) error {
+	if name == "" {
+		return fmt.Errorf("context name cannot be empty")
+	}
+
+	// Prevent shell metacharacters and control characters while allowing common k8s patterns
+	// Blocked: semicolon, pipe, ampersand, backtick, dollar, parentheses, angle brackets, newlines, tabs
+	// Allowed: alphanumeric, dash, underscore, dot, slash, at-sign, plus, colon
+	matched, err := regexp.MatchString(`^[a-zA-Z0-9._\-/@+:]+$`, name)
+	if err != nil {
+		return fmt.Errorf("failed to validate context name: %w", err)
+	}
+
+	if !matched {
+		return fmt.Errorf("invalid context name '%s': contains forbidden characters (use only alphanumeric, .-_/@+:)", name)
+	}
+
+	return nil
+}
+
+// GetNamespaces fetches namespaces for the specified context using kubectl
+func (k *KubectlAdapter) GetNamespaces(ctxName string) ([]string, error) {
+	// Validate context name for security
+	if err := validateContextName(ctxName); err != nil {
+		return nil, err
+	}
+
+	// Find kubectl in PATH
+	kubectlPath, err := exec.LookPath("kubectl")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKubectlNotFound, err)
+	}
+
+	// Expand kubeconfig path
+	kubeconfigPath, err := expandPath(k.kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand kubeconfig path: %w", err)
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Execute kubectl command
+	cmd := exec.CommandContext(ctx, kubectlPath, "--kubeconfig", kubeconfigPath, "--context", ctxName, "get", "namespaces", "-o", "json")
+	output, err := cmd.Output()
+
+	if err != nil {
+		// Check for specific error types
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("%w: kubectl command timed out after 10s", ErrTimeout)
+		}
+
+		// Check for exit error to extract stderr
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := string(exitErr.Stderr)
+
+			// Check for permission denied
+			if strings.Contains(stderr, "forbidden") || strings.Contains(stderr, "Forbidden") {
+				return nil, fmt.Errorf("%w: %s", ErrPermissionDenied, stderr)
+			}
+
+			// Check for context not found
+			if strings.Contains(stderr, "context") && (strings.Contains(stderr, "not found") || strings.Contains(stderr, "does not exist")) {
+				return nil, fmt.Errorf("%w: %s", ErrContextNotFound, ctxName)
+			}
+
+			return nil, fmt.Errorf("kubectl command failed: %s", stderr)
+		}
+
+		return nil, fmt.Errorf("failed to execute kubectl: %w", err)
+	}
+
+	// Parse JSON response
+	var response NamespaceList
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse kubectl output: %w", err)
+	}
+
+	// Extract namespace names
+	namespaces := make([]string, 0, len(response.Items))
+	for _, ns := range response.Items {
+		namespaces = append(namespaces, ns.Metadata.Name)
+	}
+
+	return namespaces, nil
 }
 
 // GetPods is a placeholder for future implementation

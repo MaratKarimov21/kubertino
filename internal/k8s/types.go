@@ -30,6 +30,27 @@ type ClusterConfig struct {
 	Server string `yaml:"server"`
 }
 
+// Namespace represents a Kubernetes namespace
+type Namespace struct {
+	Name       string
+	IsFavorite bool
+}
+
+// NamespaceList represents the JSON response from kubectl get namespaces
+type NamespaceList struct {
+	Items []NamespaceItem `json:"items"`
+}
+
+// NamespaceItem represents a single namespace in kubectl JSON output
+type NamespaceItem struct {
+	Metadata NamespaceMetadata `json:"metadata"`
+}
+
+// NamespaceMetadata contains namespace metadata
+type NamespaceMetadata struct {
+	Name string `json:"name"`
+}
+
 // Pod represents a Kubernetes pod (placeholder for future stories)
 type Pod struct {
 	Name   string

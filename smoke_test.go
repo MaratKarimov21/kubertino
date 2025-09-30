@@ -10,6 +10,13 @@ import (
 	"github.com/maratkarimov/kubertino/internal/tui"
 )
 
+// mockAdapter is a simple mock for smoke testing
+type mockAdapter struct{}
+
+func (m *mockAdapter) GetNamespaces(context string) ([]string, error) {
+	return []string{"default", "kube-system"}, nil
+}
+
 func main() {
 	cfg := &config.Config{
 		Version: "1.0",
@@ -27,7 +34,8 @@ func main() {
 		},
 	}
 
-	model := tui.NewAppModel(cfg)
+	adapter := &mockAdapter{}
+	model := tui.NewAppModel(cfg, adapter)
 
 	// Verify model is in context_selection mode with multiple contexts
 	if model.View() == "" {

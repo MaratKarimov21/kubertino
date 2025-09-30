@@ -10,6 +10,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// mockKubeAdapter is a mock implementation of KubeAdapter for testing
+type mockKubeAdapter struct {
+	namespaces []string
+	err        error
+}
+
+func (m *mockKubeAdapter) GetNamespaces(context string) ([]string, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.namespaces, nil
+}
+
+func newMockAdapter() *mockKubeAdapter {
+	return &mockKubeAdapter{
+		namespaces: []string{"default", "kube-system", "production", "staging"},
+	}
+}
+
 func TestNewAppModel(t *testing.T) {
 	t.Run("single context auto-selects", func(t *testing.T) {
 		cfg := &config.Config{
@@ -19,7 +38,7 @@ func TestNewAppModel(t *testing.T) {
 			},
 		}
 
-		model := NewAppModel(cfg)
+		model := NewAppModel(cfg, newMockAdapter())
 
 		assert.NotNil(t, model.config, "config should be set")
 		assert.Equal(t, cfg, model.config, "config should match")
@@ -40,7 +59,7 @@ func TestNewAppModel(t *testing.T) {
 			},
 		}
 
-		model := NewAppModel(cfg)
+		model := NewAppModel(cfg, newMockAdapter())
 
 		assert.NotNil(t, model.config, "config should be set")
 		assert.Nil(t, model.currentContext, "currentContext should be nil")
@@ -51,10 +70,10 @@ func TestNewAppModel(t *testing.T) {
 }
 
 func TestAppModel_Init(t *testing.T) {
-	model := NewAppModel(&config.Config{})
+	model := NewAppModel(&config.Config{}, newMockAdapter())
 	cmd := model.Init()
 
-	assert.Nil(t, cmd, "Init should return nil command for Story 1.4")
+	assert.Nil(t, cmd, "Init should return nil command when no context selected")
 }
 
 func TestAppModel_Update_KeyHandling(t *testing.T) {
@@ -104,7 +123,7 @@ func TestAppModel_Update_KeyHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model := NewAppModel(&config.Config{})
+			model := NewAppModel(&config.Config{}, newMockAdapter())
 
 			var keyMsg tea.KeyMsg
 			switch tt.keyType {
@@ -181,7 +200,7 @@ func TestAppModel_ContextSelection_Navigation(t *testing.T) {
 					{Name: "context3"},
 				},
 			}
-			model := NewAppModel(cfg)
+			model := NewAppModel(cfg, newMockAdapter())
 			model.selectedContextIndex = tt.initialIndex
 
 			keyMsg := tea.KeyMsg{Type: tt.keyType}
@@ -202,7 +221,7 @@ func TestAppModel_ContextSelection_EnterKey(t *testing.T) {
 			{Name: "context3"},
 		},
 	}
-	model := NewAppModel(cfg)
+	model := NewAppModel(cfg, newMockAdapter())
 	model.selectedContextIndex = 1
 
 	keyMsg := tea.KeyMsg{Type: tea.KeyEnter}
@@ -212,7 +231,8 @@ func TestAppModel_ContextSelection_EnterKey(t *testing.T) {
 	assert.NotNil(t, m.currentContext, "currentContext should be set")
 	assert.Equal(t, "context2", m.currentContext.Name, "should select context at index 1")
 	assert.Equal(t, viewModeNamespaceView, m.viewMode, "should transition to namespace_view")
-	assert.Nil(t, cmd, "should not return a command")
+	assert.NotNil(t, cmd, "should return namespace fetch command")
+	assert.True(t, m.namespacesLoading, "should set loading state")
 }
 
 func TestAppModel_ContextSelection_QuitKeys(t *testing.T) {
@@ -234,7 +254,7 @@ func TestAppModel_ContextSelection_QuitKeys(t *testing.T) {
 					{Name: "context2"},
 				},
 			}
-			model := NewAppModel(cfg)
+			model := NewAppModel(cfg, newMockAdapter())
 
 			var keyMsg tea.KeyMsg
 			if tt.keyType == tea.KeyRunes {
@@ -266,7 +286,7 @@ func TestAppModel_Update_WindowSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model := NewAppModel(&config.Config{})
+			model := NewAppModel(&config.Config{}, newMockAdapter())
 
 			msg := tea.WindowSizeMsg{
 				Width:  tt.width,
@@ -313,7 +333,7 @@ func TestAppModel_View_WithError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model := NewAppModel(&config.Config{})
+			model := NewAppModel(&config.Config{}, newMockAdapter())
 			model.err = assert.AnError // Use a generic error
 
 			// Override with specific error message for testing
@@ -331,7 +351,7 @@ func TestAppModel_View_WithError(t *testing.T) {
 }
 
 func TestAppModel_View_NoError(t *testing.T) {
-	model := NewAppModel(&config.Config{})
+	model := NewAppModel(&config.Config{}, newMockAdapter())
 	model.width = 100
 	model.height = 40
 
@@ -355,7 +375,7 @@ func TestAppModel_View_ResponsiveLayout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model := NewAppModel(&config.Config{})
+			model := NewAppModel(&config.Config{}, newMockAdapter())
 			model.width = tt.width
 			model.height = tt.height
 
@@ -382,7 +402,7 @@ func TestAppModel_View_ContextSelection(t *testing.T) {
 				{Name: "development", FavoriteNamespaces: []string{"default"}},
 			},
 		}
-		model := NewAppModel(cfg)
+		model := NewAppModel(cfg, newMockAdapter())
 		model.selectedContextIndex = 0
 
 		view := model.View()
@@ -403,7 +423,7 @@ func TestAppModel_View_ContextSelection(t *testing.T) {
 				{Name: "test-context"},
 			},
 		}
-		model := NewAppModel(cfg)
+		model := NewAppModel(cfg, newMockAdapter())
 
 		view := model.View()
 
@@ -486,4 +506,207 @@ type testError struct {
 
 func (e *testError) Error() string {
 	return e.msg
+}
+
+func TestAppModel_NamespaceNavigation(t *testing.T) {
+	tests := []struct {
+		name          string
+		initialIndex  int
+		keyType       tea.KeyType
+		expectedIndex int
+		numNamespaces int
+	}{
+		{
+			name:          "down arrow increments index",
+			initialIndex:  0,
+			keyType:       tea.KeyDown,
+			expectedIndex: 1,
+			numNamespaces: 4,
+		},
+		{
+			name:          "down arrow wraps around at end",
+			initialIndex:  3,
+			keyType:       tea.KeyDown,
+			expectedIndex: 0,
+			numNamespaces: 4,
+		},
+		{
+			name:          "up arrow decrements index",
+			initialIndex:  2,
+			keyType:       tea.KeyUp,
+			expectedIndex: 1,
+			numNamespaces: 4,
+		},
+		{
+			name:          "up arrow wraps around at start",
+			initialIndex:  0,
+			keyType:       tea.KeyUp,
+			expectedIndex: 3,
+			numNamespaces: 4,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Contexts: []config.Context{
+					{Name: "test-context"},
+				},
+			}
+			model := NewAppModel(cfg, newMockAdapter())
+			model.viewMode = viewModeNamespaceView
+			model.namespaces = []string{"default", "kube-system", "production", "staging"}
+			model.selectedNamespaceIndex = tt.initialIndex
+
+			keyMsg := tea.KeyMsg{Type: tt.keyType}
+			newModel, _ := model.Update(keyMsg)
+			m := newModel.(AppModel)
+
+			assert.Equal(t, tt.expectedIndex, m.selectedNamespaceIndex, "index should be updated correctly")
+			assert.Equal(t, viewModeNamespaceView, m.viewMode, "should remain in namespace_view mode")
+		})
+	}
+}
+
+func TestAppModel_NamespaceFetched(t *testing.T) {
+	t.Run("successful namespace fetch", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "test-context"},
+			},
+		}
+		model := NewAppModel(cfg, newMockAdapter())
+		model.namespacesLoading = true
+
+		msg := namespaceFetchedMsg{
+			namespaces: []string{"default", "kube-system", "production"},
+			err:        nil,
+		}
+		newModel, _ := model.Update(msg)
+		m := newModel.(AppModel)
+
+		assert.False(t, m.namespacesLoading, "loading should be false")
+		assert.Nil(t, m.namespacesError, "error should be nil")
+		assert.Len(t, m.namespaces, 3, "should have 3 namespaces")
+		assert.Contains(t, m.namespaces, "default")
+		assert.Contains(t, m.namespaces, "kube-system")
+		assert.Contains(t, m.namespaces, "production")
+	})
+
+	t.Run("failed namespace fetch", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "test-context"},
+			},
+		}
+		model := NewAppModel(cfg, newMockAdapter())
+		model.namespacesLoading = true
+
+		testErr := &testError{msg: "connection timeout"}
+		msg := namespaceFetchedMsg{
+			namespaces: nil,
+			err:        testErr,
+		}
+		newModel, _ := model.Update(msg)
+		m := newModel.(AppModel)
+
+		assert.False(t, m.namespacesLoading, "loading should be false")
+		assert.NotNil(t, m.namespacesError, "error should be set")
+		assert.Equal(t, testErr, m.namespacesError, "error should match")
+	})
+}
+
+func TestAppModel_SortNamespacesWithFavorites(t *testing.T) {
+	model := AppModel{}
+
+	t.Run("favorites sorted first", func(t *testing.T) {
+		namespaces := []string{"default", "kube-system", "production", "staging", "dev"}
+		favorites := []string{"production", "staging"}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		assert.Len(t, sorted, 5)
+		assert.Equal(t, "production", sorted[0], "first favorite should be first")
+		assert.Equal(t, "staging", sorted[1], "second favorite should be second")
+		assert.Contains(t, sorted[2:], "default", "non-favorites should follow")
+		assert.Contains(t, sorted[2:], "kube-system", "non-favorites should follow")
+		assert.Contains(t, sorted[2:], "dev", "non-favorites should follow")
+	})
+
+	t.Run("no favorites", func(t *testing.T) {
+		namespaces := []string{"default", "kube-system"}
+		favorites := []string{}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		assert.Equal(t, namespaces, sorted, "order should remain unchanged")
+	})
+
+	t.Run("all favorites", func(t *testing.T) {
+		namespaces := []string{"default", "kube-system"}
+		favorites := []string{"default", "kube-system"}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		assert.Len(t, sorted, 2)
+		assert.Contains(t, sorted, "default")
+		assert.Contains(t, sorted, "kube-system")
+	})
+}
+
+func TestAppModel_RenderNamespaceList(t *testing.T) {
+	t.Run("shows loading state", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "test-context"},
+			},
+		}
+		model := NewAppModel(cfg, newMockAdapter())
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.namespacesLoading = true
+
+		view := model.View()
+
+		assert.Contains(t, view, "Loading namespaces", "should show loading message")
+		assert.Contains(t, view, "Namespaces", "should show header")
+	})
+
+	t.Run("shows error state", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "test-context"},
+			},
+		}
+		model := NewAppModel(cfg, newMockAdapter())
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.namespacesError = &testError{msg: "connection failed"}
+
+		view := model.View()
+
+		assert.Contains(t, view, "Error fetching namespaces", "should show error message")
+		assert.Contains(t, view, "connection failed", "should show error details")
+	})
+
+	t.Run("shows namespace list", func(t *testing.T) {
+		cfg := &config.Config{
+			Contexts: []config.Context{
+				{Name: "test-context", FavoriteNamespaces: []string{"production"}},
+			},
+		}
+		model := NewAppModel(cfg, newMockAdapter())
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.namespaces = []string{"production", "default", "kube-system"}
+
+		view := model.View()
+
+		assert.Contains(t, view, "Namespaces (3)", "should show namespace count")
+		assert.Contains(t, view, "production", "should show namespace")
+		assert.Contains(t, view, "default", "should show namespace")
+		assert.Contains(t, view, "kube-system", "should show namespace")
+		assert.Contains(t, view, "★", "should show favorite indicator")
+		assert.Contains(t, view, "Navigate", "should show navigation hint")
+	})
 }
