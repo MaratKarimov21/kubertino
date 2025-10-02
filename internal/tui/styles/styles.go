@@ -33,4 +33,10 @@ var (
 	// Gray color
 	DimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("8")) // Gray
+
+	// HighlightStyle is used for highlighting matching characters in search results
+	// Cyan color with bold
+	HighlightStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("14")). // Bright cyan
+			Bold(true)
 )

@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maratkarimov/kubertino/internal/config"
+	"github.com/maratkarimov/kubertino/internal/k8s"
+	"github.com/maratkarimov/kubertino/internal/search"
 	"github.com/maratkarimov/kubertino/internal/tui/styles"
 )
 
@@ -43,6 +45,10 @@ type AppModel struct {
 	namespacesLoading      bool
 	namespacesError        error
 	kubeAdapter            KubeAdapter
+	// Search mode fields
+	searchMode         bool
+	searchQuery        string
+	filteredNamespaces []string
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
@@ -117,7 +123,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		// Handle quit keys
+		// Handle search mode ESC first (before quit keys)
+		if m.searchMode && msg.Type == tea.KeyEsc {
+			m.deactivateSearch()
+			return m, nil
+		}
+
+		// Handle quit keys (but not in search mode where ESC is handled above)
 		if KeyMatches(msg, m.keys.Quit) {
 			return m, tea.Quit
 		}
@@ -156,19 +168,63 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle namespace view navigation
 		if m.viewMode == viewModeNamespaceView {
+			// Handle search mode activation
+			if !m.searchMode && msg.String() == "/" {
+				m.activateSearch()
+				return m, nil
+			}
+
+			// Handle search mode input
+			if m.searchMode {
+				// Enter selects current filtered namespace and exits search
+				if KeyMatches(msg, m.keys.Enter) {
+					if len(m.filteredNamespaces) > 0 && m.selectedNamespaceIndex < len(m.filteredNamespaces) {
+						// TODO: Actual namespace selection logic (Story 2.4+)
+						// For now, just deactivate search
+						m.deactivateSearch()
+					}
+					return m, nil
+				}
+
+				// Backspace removes last character
+				if msg.Type == tea.KeyBackspace {
+					if len(m.searchQuery) > 0 {
+						m.updateSearchQuery(m.searchQuery[:len(m.searchQuery)-1])
+					}
+					return m, nil
+				}
+
+				// Handle regular character input (alphanumeric, dash, dot, underscore)
+				if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+					r := msg.Runes[0]
+					// Accept alphanumeric, dash, dot, underscore
+					if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '.' || r == '_' {
+						m.updateSearchQuery(m.searchQuery + string(r))
+					}
+					return m, nil
+				}
+			}
+
+			// Navigation (works in both normal and search mode)
+			// Get the list we're navigating (filtered or full)
+			navList := m.namespaces
+			if m.searchMode && m.filteredNamespaces != nil {
+				navList = m.filteredNamespaces
+			}
+
 			if KeyMatches(msg, m.keys.Up) {
 				// Navigate up with wrap-around
-				if len(m.namespaces) > 0 {
+				if len(navList) > 0 {
 					m.selectedNamespaceIndex--
 					if m.selectedNamespaceIndex < 0 {
-						m.selectedNamespaceIndex = len(m.namespaces) - 1
+						m.selectedNamespaceIndex = len(navList) - 1
 						// Wrap to end: adjust viewport to show last item
 						availableHeight := m.height - 4
 						if availableHeight < 1 {
 							availableHeight = 10
 						}
-						if len(m.namespaces) > availableHeight {
-							m.namespaceViewportStart = len(m.namespaces) - availableHeight
+						if len(navList) > availableHeight {
+							m.namespaceViewportStart = len(navList) - availableHeight
 						}
 					} else if m.selectedNamespaceIndex < m.namespaceViewportStart {
 						// Scroll up: selected item went above viewport
@@ -180,9 +236,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if KeyMatches(msg, m.keys.Down) {
 				// Navigate down with wrap-around
-				if len(m.namespaces) > 0 {
+				if len(navList) > 0 {
 					m.selectedNamespaceIndex++
-					if m.selectedNamespaceIndex >= len(m.namespaces) {
+					if m.selectedNamespaceIndex >= len(navList) {
 						m.selectedNamespaceIndex = 0
 						// Wrap to start: reset viewport to beginning
 						m.namespaceViewportStart = 0
@@ -239,6 +295,92 @@ func (m AppModel) sortNamespacesWithFavorites(namespaces []string, favorites []s
 	return result
 }
 
+// activateSearch enables search mode and initializes filtered list
+func (m *AppModel) activateSearch() {
+	slog.Debug("search mode activated")
+	m.searchMode = true
+	m.searchQuery = ""
+	m.filteredNamespaces = m.namespaces
+	m.selectedNamespaceIndex = 0
+	m.namespaceViewportStart = 0
+}
+
+// deactivateSearch disables search mode and clears search state
+func (m *AppModel) deactivateSearch() {
+	slog.Debug("search mode deactivated")
+	m.searchMode = false
+	m.searchQuery = ""
+	m.filteredNamespaces = nil
+	// Reset selected index to 0 (don't try to preserve position)
+	m.selectedNamespaceIndex = 0
+	m.namespaceViewportStart = 0
+}
+
+// updateSearchQuery updates the search query and filters namespaces
+func (m *AppModel) updateSearchQuery(query string) {
+	m.searchQuery = query
+
+	if query == "" {
+		// Empty query shows all namespaces
+		m.filteredNamespaces = m.namespaces
+	} else {
+		// Perform fuzzy search (will be implemented next)
+		m.filteredNamespaces = m.performFuzzySearch(query)
+	}
+
+	// Reset selection to first result
+	m.selectedNamespaceIndex = 0
+	m.namespaceViewportStart = 0
+
+	slog.Debug("search query updated", "query", query, "results", len(m.filteredNamespaces))
+}
+
+// performFuzzySearch performs fuzzy search and returns filtered namespace list
+func (m *AppModel) performFuzzySearch(query string) []string {
+	// Convert string slice to Namespace slice for fuzzy matching
+	namespaces := make([]k8s.Namespace, len(m.namespaces))
+	for i, ns := range m.namespaces {
+		namespaces[i] = k8s.Namespace{Name: ns}
+	}
+
+	// Perform fuzzy search
+	matches := search.FuzzyMatch(query, namespaces)
+
+	// Convert matches back to string slice
+	results := make([]string, len(matches))
+	for i, match := range matches {
+		results[i] = match.Namespace.Name
+	}
+
+	return results
+}
+
+// getMatchIndices returns the match indices for a given namespace in the current search
+// Returns nil if not in search mode or namespace not found
+func (m *AppModel) getMatchIndices(namespaceName string) []int {
+	if !m.searchMode || m.searchQuery == "" {
+		return nil
+	}
+
+	// Convert string slice to Namespace slice
+	namespaces := make([]k8s.Namespace, len(m.namespaces))
+	for i, ns := range m.namespaces {
+		namespaces[i] = k8s.Namespace{Name: ns}
+	}
+
+	// Perform fuzzy search
+	matches := search.FuzzyMatch(m.searchQuery, namespaces)
+
+	// Find matching indices for this namespace
+	for _, match := range matches {
+		if match.Namespace.Name == namespaceName {
+			return match.MatchIndices
+		}
+	}
+
+	return nil
+}
+
 // View renders the UI based on the current model state
 func (m AppModel) View() string {
 	// If there's an error, display it
@@ -284,6 +426,14 @@ func (m AppModel) renderBasicLayout() string {
 func (m AppModel) renderNamespaceList() string {
 	var s string
 
+	// Determine which list to render
+	renderList := m.namespaces
+	listCount := len(m.namespaces)
+	if m.searchMode && m.filteredNamespaces != nil {
+		renderList = m.filteredNamespaces
+		listCount = len(m.filteredNamespaces)
+	}
+
 	// Header with namespace count
 	header := styles.TitleStyle.Render(fmt.Sprintf("Namespaces (%d)", len(m.namespaces)))
 	if m.currentContext != nil {
@@ -311,6 +461,9 @@ func (m AppModel) renderNamespaceList() string {
 	// Render namespace list
 	if len(m.namespaces) == 0 {
 		s += styles.DimStyle.Render("No namespaces found") + "\n"
+	} else if m.searchMode && len(m.filteredNamespaces) == 0 {
+		// Show "no matches" message when search returns empty
+		s += styles.DimStyle.Render("No matches found") + "\n"
 	} else {
 		// Create favorite set for lookup
 		favSet := make(map[string]bool)
@@ -321,27 +474,31 @@ func (m AppModel) renderNamespaceList() string {
 		}
 
 		// Calculate viewport (visible window)
-		// Reserve space for: header (2 lines) + footer (2 lines) + margins
-		availableHeight := m.height - 4
+		// Reserve space for: header (2 lines) + search box (1 line if active) + footer (2 lines) + margins
+		reservedLines := 4
+		if m.searchMode {
+			reservedLines = 5 // Extra line for search input box
+		}
+		availableHeight := m.height - reservedLines
 		if availableHeight < 1 {
 			availableHeight = 10 // Minimum reasonable height
 		}
 
 		// Use stored viewport position (updated during navigation)
 		start := m.namespaceViewportStart
-		end := len(m.namespaces)
+		end := listCount
 
-		if len(m.namespaces) > availableHeight {
+		if listCount > availableHeight {
 			// List is longer than screen - use viewport
 			end = start + availableHeight
-			if end > len(m.namespaces) {
-				end = len(m.namespaces)
+			if end > listCount {
+				end = listCount
 			}
 		}
 
 		// Render visible namespaces
 		for i := start; i < end; i++ {
-			ns := m.namespaces[i]
+			ns := renderList[i]
 			prefix := "  "
 			if i == m.selectedNamespaceIndex {
 				prefix = "> "
@@ -352,27 +509,75 @@ func (m AppModel) renderNamespaceList() string {
 				prefix += "★ "
 			}
 
-			// Render with appropriate styling
-			if i == m.selectedNamespaceIndex {
-				s += styles.SelectedStyle.Render(prefix+ns) + "\n"
+			// Render namespace name with highlighting if in search mode
+			var renderedName string
+			if m.searchMode && m.searchQuery != "" {
+				renderedName = m.renderNamespaceWithHighlight(ns, prefix)
 			} else {
-				s += styles.NormalStyle.Render(prefix+ns) + "\n"
+				renderedName = prefix + ns
+			}
+
+			// Apply selection styling
+			if i == m.selectedNamespaceIndex {
+				s += styles.SelectedStyle.Render(renderedName) + "\n"
+			} else {
+				s += renderedName + "\n"
 			}
 		}
 
 		// Show scroll indicators if list is longer than viewport
-		if len(m.namespaces) > availableHeight {
-			indicator := fmt.Sprintf(" [%d-%d of %d]", start+1, end, len(m.namespaces))
+		if listCount > availableHeight {
+			indicator := fmt.Sprintf(" [%d-%d of %d]", start+1, end, listCount)
 			s += styles.DimStyle.Render(indicator) + "\n"
 		}
 	}
 
+	// Search input box (if search mode active)
+	if m.searchMode {
+		s += "\n"
+		searchBox := "Search: " + m.searchQuery + "_"
+		s += styles.NormalStyle.Render(searchBox) + "\n"
+	}
+
 	// Footer with key hints
 	s += "\n"
-	footer := styles.DimStyle.Render("↑/↓ Navigate | /: Search | ESC/q: Quit")
-	s += footer
+	if m.searchMode {
+		footer := styles.DimStyle.Render("Type to search | ESC: Cancel | Enter: Select")
+		s += footer
+	} else {
+		footer := styles.DimStyle.Render("↑/↓ Navigate | /: Search | ESC/q: Quit")
+		s += footer
+	}
 
 	return s
+}
+
+// renderNamespaceWithHighlight renders a namespace name with matching characters highlighted
+func (m AppModel) renderNamespaceWithHighlight(namespace string, prefix string) string {
+	matchIndices := m.getMatchIndices(namespace)
+	if len(matchIndices) == 0 {
+		return prefix + namespace
+	}
+
+	// Create a set of match indices for quick lookup
+	matchSet := make(map[int]bool)
+	for _, idx := range matchIndices {
+		matchSet[idx] = true
+	}
+
+	// Build the highlighted string
+	result := prefix
+	for i, char := range namespace {
+		if matchSet[i] {
+			// Highlight matching character
+			result += styles.HighlightStyle.Render(string(char))
+		} else {
+			// Normal character
+			result += string(char)
+		}
+	}
+
+	return result
 }
 
 // renderContextList renders the full-screen context selection list
