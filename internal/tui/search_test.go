@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const testSearchQuery = "kube"
+
 func TestSearchMode_Activation(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
@@ -43,7 +45,7 @@ func TestSearchMode_Deactivation(t *testing.T) {
 
 	// Activate search
 	model.searchMode = true
-	model.searchQuery = "kube"
+	model.searchQuery = testSearchQuery
 	model.filteredNamespaces = []string{"kube-system"}
 
 	// Press ESC to deactivate search
@@ -75,12 +77,12 @@ func TestSearchMode_CharacterInput(t *testing.T) {
 			name:          "multiple characters",
 			initialQuery:  "kub",
 			inputChar:     'e',
-			expectedQuery: "kube",
+			expectedQuery: testSearchQuery,
 			shouldFilter:  true,
 		},
 		{
 			name:          "dash character",
-			initialQuery:  "kube",
+			initialQuery:  testSearchQuery,
 			inputChar:     '-',
 			expectedQuery: "kube-",
 			shouldFilter:  true,
@@ -145,7 +147,7 @@ func TestSearchMode_Backspace(t *testing.T) {
 	model.viewMode = viewModeNamespaceView
 	model.namespaces = []string{"kube-system", "default", "production"}
 	model.searchMode = true
-	model.searchQuery = "kube"
+	model.searchQuery = testSearchQuery
 	model.filteredNamespaces = []string{"kube-system"}
 
 	// Press backspace
@@ -190,7 +192,7 @@ func TestSearchMode_EnterSelectsNamespace(t *testing.T) {
 	model.viewMode = viewModeNamespaceView
 	model.namespaces = []string{"kube-system", "default", "production"}
 	model.searchMode = true
-	model.searchQuery = "kube"
+	model.searchQuery = testSearchQuery
 	model.filteredNamespaces = []string{"kube-system"}
 	model.selectedNamespaceIndex = 0
 
@@ -214,7 +216,7 @@ func TestSearchMode_Navigation(t *testing.T) {
 	model.viewMode = viewModeNamespaceView
 	model.namespaces = []string{"kube-system", "kube-public", "default"}
 	model.searchMode = true
-	model.searchQuery = "kube"
+	model.searchQuery = testSearchQuery
 	model.filteredNamespaces = []string{"kube-system", "kube-public"}
 	model.selectedNamespaceIndex = 0
 
@@ -265,8 +267,8 @@ func TestSearchMode_FuzzyMatching(t *testing.T) {
 	model.viewMode = viewModeNamespaceView
 	model.namespaces = []string{"kube-system", "default", "production", "kubertino-app"}
 
-	// Test fuzzy matching with "kube"
-	model.updateSearchQuery("kube")
+	// Test fuzzy matching with testSearchQuery
+	model.updateSearchQuery(testSearchQuery)
 
 	assert.Greater(t, len(model.filteredNamespaces), 0, "should have matches")
 	assert.Contains(t, model.filteredNamespaces, "kube-system", "should match kube-system")
@@ -303,10 +305,10 @@ func TestRenderNamespaceList_SearchMode(t *testing.T) {
 	model.namespaces = []string{"kube-system", "default"}
 	model.height = 20
 	model.searchMode = true
-	model.searchQuery = "kube"
+	model.searchQuery = testSearchQuery
 	model.filteredNamespaces = []string{"kube-system"}
 
-	output := model.renderNamespaceList()
+	output := model.renderNamespaceList(0)
 
 	assert.Contains(t, output, "Search: kube_", "should show search input box")
 	assert.Contains(t, output, "kube-system", "should show filtered namespace")
@@ -330,7 +332,7 @@ func TestRenderNamespaceList_SearchModeNoMatches(t *testing.T) {
 	model.searchQuery = "xyz"
 	model.filteredNamespaces = []string{}
 
-	output := model.renderNamespaceList()
+	output := model.renderNamespaceList(0)
 
 	assert.Contains(t, output, "No matches found", "should show no matches message")
 	assert.Contains(t, output, "Search: xyz_", "should show search input box")
@@ -350,7 +352,7 @@ func TestRenderNamespaceList_NormalMode(t *testing.T) {
 	model.height = 20
 	model.searchMode = false
 
-	output := model.renderNamespaceList()
+	output := model.renderNamespaceList(0)
 
 	assert.NotContains(t, output, "Search:", "should not show search input box")
 	assert.Contains(t, output, "/: Search", "should show / key hint")

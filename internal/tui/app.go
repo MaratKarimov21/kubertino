@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/maratkarimov/kubertino/internal/config"
 	"github.com/maratkarimov/kubertino/internal/k8s"
 	"github.com/maratkarimov/kubertino/internal/search"
@@ -15,6 +16,11 @@ const (
 	// View mode constants
 	viewModeContextSelection = "context_selection"
 	viewModeNamespaceView    = "namespace_view"
+
+	// Terminal size constraints
+	MinTerminalWidth  = 80
+	MinTerminalHeight = 24
+	HeaderHeight      = 1
 )
 
 // KubeAdapter is an interface for Kubernetes operations
@@ -49,6 +55,10 @@ type AppModel struct {
 	searchMode         bool
 	searchQuery        string
 	filteredNamespaces []string
+	// Terminal size fields
+	termWidth        int
+	termHeight       int
+	terminalTooSmall bool
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
@@ -97,12 +107,12 @@ func (m AppModel) fetchNamespacesCmd() tea.Cmd {
 			return namespaceFetchedMsg{err: err}
 		}
 
-		slog.Info("namespaces fetched", "context", m.currentContext.Name, "count", len(namespaces))
 		return namespaceFetchedMsg{namespaces: namespaces}
 	}
 }
 
 // Update handles incoming messages and returns an updated model and optional command
+// nolint:gocyclo // Bubble Tea Update pattern inherently has high complexity due to message routing
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case namespaceFetchedMsg:
@@ -263,6 +273,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle terminal resize
 		m.width = msg.Width
 		m.height = msg.Height
+		m.termWidth = msg.Width
+		m.termHeight = msg.Height
+
+		// Check minimum size
+		if msg.Width < MinTerminalWidth || msg.Height < MinTerminalHeight {
+			m.terminalTooSmall = true
+		} else {
+			m.terminalTooSmall = false
+		}
 		return m, nil
 	}
 
@@ -397,7 +416,11 @@ func (m AppModel) View() string {
 	}
 
 	if m.viewMode == viewModeNamespaceView {
-		return m.renderNamespaceList()
+		// Check terminal size before rendering
+		if m.terminalTooSmall {
+			return m.renderTerminalTooSmallWarning()
+		}
+		return m.renderSplitLayout()
 	}
 
 	// Default to basic layout (shouldn't reach here)
@@ -423,8 +446,19 @@ func (m AppModel) renderBasicLayout() string {
 }
 
 // renderNamespaceList renders the namespace list panel
-func (m AppModel) renderNamespaceList() string {
+// panelHeight is the actual height available for the namespace list (0 = use m.height)
+func (m AppModel) renderNamespaceList(panelHeight int) string {
 	var s string
+
+	// Use provided panel height or fall back to full terminal height
+	effectiveHeight := panelHeight
+	if effectiveHeight == 0 {
+		effectiveHeight = m.height
+	}
+	// If still 0 (tests don't set terminal size), use a reasonable default
+	if effectiveHeight == 0 {
+		effectiveHeight = 20
+	}
 
 	// Determine which list to render
 	renderList := m.namespaces
@@ -474,15 +508,39 @@ func (m AppModel) renderNamespaceList() string {
 		}
 
 		// Calculate viewport (visible window)
-		// Reserve space for: header (2 lines) + search box (1 line if active) + footer (2 lines) + margins
-		reservedLines := 4
+		// Count exact lines used by UI elements:
+		// - Header: "Namespaces (N)" + blank line = 2 lines
+		// - Each namespace item: 1 line
+		// - Scroll indicator (if needed): 1 line
+		// - Blank line before footer: 1 line
+		// - Search box (if active): blank + search line = 2 lines
+		// - Footer: 1 line
+
+		headerLines := 2
+		footerLines := 2          // blank line + footer text
+		scrollIndicatorLines := 1 // will be shown if list > available
+		searchBoxLines := 0
 		if m.searchMode {
-			reservedLines = 5 // Extra line for search input box
+			searchBoxLines = 2 // blank + search input
 		}
-		availableHeight := m.height - reservedLines
+
+		// Reserve space for fixed UI elements
+		reservedLines := headerLines + footerLines + searchBoxLines
+
+		// Calculate available space for namespace items
+		// We'll add scroll indicator line if needed, so reserve 1 more
+		availableHeight := effectiveHeight - reservedLines - scrollIndicatorLines
 		if availableHeight < 1 {
-			availableHeight = 10 // Minimum reasonable height
+			availableHeight = 1 // Minimum: show at least 1 namespace
 		}
+
+		// DEBUG: Log to see actual values
+		slog.Debug("viewport calculation",
+			"effectiveHeight", effectiveHeight,
+			"reservedLines", reservedLines,
+			"scrollIndicatorLines", scrollIndicatorLines,
+			"availableHeight", availableHeight,
+			"listCount", listCount)
 
 		// Use stored viewport position (updated during navigation)
 		start := m.namespaceViewportStart
@@ -616,4 +674,107 @@ func (m AppModel) renderContextList() string {
 	s += footer
 
 	return s
+}
+
+// renderSplitLayout renders the split-pane layout with header, namespace, pods, and actions panels
+func (m AppModel) renderSplitLayout() string {
+	// Render header
+	header := m.renderHeader()
+
+	// Calculate dimensions
+	availableHeight := m.termHeight - HeaderHeight
+	leftWidth := m.termWidth / 2
+	rightWidth := m.termWidth - leftWidth
+	rightTopHeight := availableHeight / 2
+	rightBottomHeight := availableHeight - rightTopHeight
+
+	// Render panels
+	namespacePanel := m.renderNamespacePanel(leftWidth, availableHeight)
+	podPanel := m.renderPodPanel(rightWidth, rightTopHeight)
+	actionsPanel := m.renderActionsPanel(rightWidth, rightBottomHeight)
+
+	// Compose layout: combine right panels vertically
+	rightSide := lipgloss.JoinVertical(lipgloss.Left, podPanel, actionsPanel)
+
+	// Combine left and right panels horizontally
+	mainLayout := lipgloss.JoinHorizontal(lipgloss.Top, namespacePanel, rightSide)
+
+	// Add header at top
+	return lipgloss.JoinVertical(lipgloss.Left, header, mainLayout)
+}
+
+// renderHeader renders the header bar with context name
+func (m AppModel) renderHeader() string {
+	contextName := "None"
+	if m.currentContext != nil {
+		contextName = m.currentContext.Name
+	}
+	text := fmt.Sprintf("Context: %s", contextName)
+	return styles.HeaderStyle.Width(m.termWidth).Render(text)
+}
+
+// renderNamespacePanel renders the namespace list panel with borders
+func (m AppModel) renderNamespacePanel(width, height int) string {
+	// PanelBorderStyle has Padding(1, 2) and Border (adds 2 lines vertically, 2 chars horizontally)
+	// Total additions: vertical = 2 (border) + 2 (padding) = 4 lines
+	//                  horizontal = 2 (border) + 4 (padding) = 6 chars
+
+	// Calculate available height for content (what renderNamespaceList will receive)
+	// We need to account for what Lip Gloss will add
+	contentHeight := height - 4 // Subtract border (2) + padding (2)
+
+	// Get the namespace list content with correct panel height
+	content := m.renderNamespaceList(contentHeight)
+
+	// Width calculation: Lip Gloss adds border (2) + padding (4) = 6 chars total
+	contentWidth := width - 6
+
+	// Don't use MaxHeight - it cuts off borders
+	// Instead, renderNamespaceList already limits content to contentHeight
+	// Just apply the border and let Lip Gloss add padding + border
+	return styles.PanelBorderStyle.
+		Width(contentWidth).
+		Render(content)
+}
+
+// renderPodPanel renders the placeholder pod panel
+func (m AppModel) renderPodPanel(width, height int) string {
+	title := styles.PanelTitleStyle.Render("Pods")
+	placeholder := styles.PlaceholderStyle.Render("Select a namespace to view pods")
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", placeholder)
+
+	// Apply border style with calculated dimensions
+	contentWidth := width - 4   // 2 for border + 2*2 for padding
+	contentHeight := height - 2 // 2 for border
+
+	return styles.PanelBorderStyle.
+		Width(contentWidth).
+		Height(contentHeight).
+		Render(content)
+}
+
+// renderActionsPanel renders the placeholder actions panel
+func (m AppModel) renderActionsPanel(width, height int) string {
+	title := styles.PanelTitleStyle.Render("Actions")
+	placeholder := styles.PlaceholderStyle.Render("Available actions will appear here")
+	content := lipgloss.JoinVertical(lipgloss.Left, title, "", placeholder)
+
+	// Apply border style with calculated dimensions
+	contentWidth := width - 4   // 2 for border + 2*2 for padding
+	contentHeight := height - 2 // 2 for border
+
+	return styles.PanelBorderStyle.
+		Width(contentWidth).
+		Height(contentHeight).
+		Render(content)
+}
+
+// renderTerminalTooSmallWarning renders a warning message when terminal is too small
+func (m AppModel) renderTerminalTooSmallWarning() string {
+	message := fmt.Sprintf(
+		"Terminal too small.\nMinimum size: %dx%d\nCurrent: %dx%d",
+		MinTerminalWidth, MinTerminalHeight,
+		m.termWidth, m.termHeight,
+	)
+	return styles.PlaceholderStyle.Render(message)
 }

@@ -698,6 +698,8 @@ func TestAppModel_RenderNamespaceList(t *testing.T) {
 		model := NewAppModel(cfg, newMockAdapter())
 		model.currentContext = &cfg.Contexts[0]
 		model.viewMode = viewModeNamespaceView
+		model.termWidth = 80
+		model.termHeight = 24
 		model.namespaces = []string{"production", "default", "kube-system"}
 
 		view := model.View()

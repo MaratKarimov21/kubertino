@@ -39,4 +39,32 @@ var (
 	HighlightStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("14")). // Bright cyan
 			Bold(true)
+
+	// PanelBorderStyle is used for panel borders
+	// Purple border with rounded corners and padding
+	PanelBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("62")). // Purple
+				Padding(1, 2)
+
+	// PanelTitleStyle is used for panel headers/titles within panels
+	// Cyan color with bold
+	PanelTitleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("86")). // Cyan
+			Padding(0, 1)
+
+	// HeaderStyle is used for the top header bar showing context
+	// Yellow text on dark gray background
+	HeaderStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("230")). // Yellow
+			Background(lipgloss.Color("235")). // Dark gray
+			Padding(0, 2)
+
+	// PlaceholderStyle is used for placeholder text in empty panels
+	// Gray color with italic
+	PlaceholderStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")). // Gray
+				Italic(true)
 )

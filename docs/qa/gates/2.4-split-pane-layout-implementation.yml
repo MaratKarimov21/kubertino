@@ -1,0 +1,57 @@
+# Quality Gate Decision - Story 2.4
+schema: 1
+story: "2.4"
+story_title: "Split-Pane Layout Implementation"
+gate: CONCERNS
+status_reason: "Critical viewport bug found and fixed. Implementation is solid but bug escaped to review, indicating test gap for viewport edge cases in split-layout mode."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-10-02T00:00:00Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "BUG-001"
+    severity: high
+    finding: "Namespace list viewport calculation used full terminal height instead of actual panel height, causing list overflow when constrained"
+    suggested_action: "FIXED - Added panelHeight parameter to renderNamespaceList() and updated all calls. Added effectiveHeight logic to properly calculate viewport in split-layout mode."
+  - id: "TEST-001"
+    severity: medium
+    finding: "Test suite did not catch viewport overflow bug in split-layout mode with long namespace lists"
+    suggested_action: "Add integration test for split-layout with 40+ namespaces to verify viewport scrolling works correctly within panel boundaries"
+
+risk_summary:
+  totals: { critical: 0, high: 1, medium: 1, low: 0 }
+  recommendations:
+    must_fix:
+      - "COMPLETED - Fixed viewport height calculation bug"
+    monitor:
+      - "Add comprehensive viewport tests for edge cases"
+
+quality_score: 80
+# 100 - (20×0 FAILs) - (10×2 CONCERNS) = 80
+
+evidence:
+  tests_reviewed: 17
+  risks_identified: 2
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8]
+    ac_gaps: []
+
+nfr_validation:
+  security: { status: PASS, notes: "No security concerns - pure UI rendering" }
+  performance: { status: PASS, notes: "Efficient layout calculation, no performance issues" }
+  reliability: { status: CONCERNS, notes: "Bug escaped to review due to test gap - see BUG-001" }
+  maintainability: { status: PASS, notes: "Clean code structure, well-documented, 93.8% test coverage" }
+
+recommendations:
+  immediate:
+    - action: "Add test case: TestRenderNamespacePanel_LongListInSplitLayout with 40+ namespaces"
+      refs: ["internal/tui/layout_test.go"]
+  future:
+    - action: "Consider extracting viewport calculation logic to separate testable function"
+      refs: ["internal/tui/app.go:507-516"]
+
+history:
+  - at: "2025-10-02T00:00:00Z"
+    gate: CONCERNS
+    note: "Initial review - Critical viewport bug found and fixed. Test gap identified."
