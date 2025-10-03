@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maratkarimov/kubertino/internal/config"
+	"github.com/maratkarimov/kubertino/internal/k8s"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,6 +14,7 @@ import (
 // mockKubeAdapter is a mock implementation of KubeAdapter for testing
 type mockKubeAdapter struct {
 	namespaces []string
+	pods       []k8s.Pod
 	err        error
 }
 
@@ -23,9 +25,20 @@ func (m *mockKubeAdapter) GetNamespaces(context string) ([]string, error) {
 	return m.namespaces, nil
 }
 
+func (m *mockKubeAdapter) GetPods(context, namespace string) ([]k8s.Pod, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.pods, nil
+}
+
 func newMockAdapter() *mockKubeAdapter {
 	return &mockKubeAdapter{
 		namespaces: []string{"default", "kube-system", "production", "staging"},
+		pods: []k8s.Pod{
+			{Name: "test-pod-1", Status: "Running"},
+			{Name: "test-pod-2", Status: "Pending"},
+		},
 	}
 }
 

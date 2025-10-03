@@ -56,3 +56,24 @@ type Pod struct {
 	Name   string
 	Status string
 }
+
+// PodList represents the JSON response from kubectl get pods
+type PodList struct {
+	Items []PodItem `json:"items"`
+}
+
+// PodItem represents a single pod in kubectl JSON output
+type PodItem struct {
+	Metadata PodMetadata `json:"metadata"`
+	Status   PodStatus   `json:"status"`
+}
+
+// PodMetadata contains pod metadata
+type PodMetadata struct {
+	Name string `json:"name"`
+}
+
+// PodStatus contains pod status information
+type PodStatus struct {
+	Phase string `json:"phase"`
+}

@@ -26,12 +26,19 @@ const (
 // KubeAdapter is an interface for Kubernetes operations
 type KubeAdapter interface {
 	GetNamespaces(context string) ([]string, error)
+	GetPods(context, namespace string) ([]k8s.Pod, error)
 }
 
 // namespaceFetchedMsg is sent when namespaces are fetched
 type namespaceFetchedMsg struct {
 	namespaces []string
 	err        error
+}
+
+// podsFetchedMsg is sent when pods are fetched
+type podsFetchedMsg struct {
+	pods []k8s.Pod
+	err  error
 }
 
 // AppModel is the main Bubble Tea model for the Kubertino TUI
@@ -55,6 +62,11 @@ type AppModel struct {
 	searchMode         bool
 	searchQuery        string
 	filteredNamespaces []string
+	// Pod state fields
+	pods             []k8s.Pod
+	podsLoading      bool
+	podsError        error
+	currentNamespace string
 	// Terminal size fields
 	termWidth        int
 	termHeight       int
@@ -111,6 +123,29 @@ func (m AppModel) fetchNamespacesCmd() tea.Cmd {
 	}
 }
 
+// fetchPodsCmd returns a command that fetches pods asynchronously
+func (m AppModel) fetchPodsCmd() tea.Cmd {
+	return func() tea.Msg {
+		if m.currentContext == nil {
+			return podsFetchedMsg{err: fmt.Errorf("no context selected")}
+		}
+
+		if m.currentNamespace == "" {
+			return podsFetchedMsg{err: fmt.Errorf("no namespace selected")}
+		}
+
+		slog.Info("fetching pods", "context", m.currentContext.Name, "namespace", m.currentNamespace)
+		pods, err := m.kubeAdapter.GetPods(m.currentContext.Name, m.currentNamespace)
+
+		if err != nil {
+			slog.Error("pod fetch failed", "context", m.currentContext.Name, "namespace", m.currentNamespace, "error", err)
+			return podsFetchedMsg{err: err}
+		}
+
+		return podsFetchedMsg{pods: pods}
+	}
+}
+
 // Update handles incoming messages and returns an updated model and optional command
 // nolint:gocyclo // Bubble Tea Update pattern inherently has high complexity due to message routing
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -130,6 +165,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.namespaces = m.sortNamespacesWithFavorites(m.namespaces, m.currentContext.FavoriteNamespaces)
 		}
 
+		return m, nil
+
+	case podsFetchedMsg:
+		// Handle pod fetch results
+		m.podsLoading = false
+		if msg.err != nil {
+			m.podsError = msg.err
+			return m, nil
+		}
+		m.podsError = nil
+		m.pods = msg.pods
 		return m, nil
 
 	case tea.KeyMsg:
@@ -189,9 +235,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Enter selects current filtered namespace and exits search
 				if KeyMatches(msg, m.keys.Enter) {
 					if len(m.filteredNamespaces) > 0 && m.selectedNamespaceIndex < len(m.filteredNamespaces) {
-						// TODO: Actual namespace selection logic (Story 2.4+)
-						// For now, just deactivate search
+						// Select namespace and fetch pods
+						m.currentNamespace = m.filteredNamespaces[m.selectedNamespaceIndex]
 						m.deactivateSearch()
+						m.podsLoading = true
+						m.podsError = nil
+						m.pods = nil
+						return m, m.fetchPodsCmd()
 					}
 					return m, nil
 				}
@@ -213,6 +263,19 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				}
+			}
+
+			// Handle Enter key in normal mode (namespace selection)
+			if !m.searchMode && KeyMatches(msg, m.keys.Enter) {
+				if len(m.namespaces) > 0 && m.selectedNamespaceIndex < len(m.namespaces) {
+					// Select namespace and fetch pods
+					m.currentNamespace = m.namespaces[m.selectedNamespaceIndex]
+					m.podsLoading = true
+					m.podsError = nil
+					m.pods = nil
+					return m, m.fetchPodsCmd()
+				}
+				return m, nil
 			}
 
 			// Navigation (works in both normal and search mode)
@@ -737,11 +800,38 @@ func (m AppModel) renderNamespacePanel(width, height int) string {
 		Render(content)
 }
 
-// renderPodPanel renders the placeholder pod panel
+// renderPodPanel renders the pod panel with real data, loading, or error states
 func (m AppModel) renderPodPanel(width, height int) string {
 	title := styles.PanelTitleStyle.Render("Pods")
-	placeholder := styles.PlaceholderStyle.Render("Select a namespace to view pods")
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", placeholder)
+
+	var content string
+
+	// Loading state
+	if m.podsLoading {
+		content = styles.LoadingStyle.Render("Loading pods...")
+	} else if m.podsError != nil {
+		// Error state
+		errorMsg := fmt.Sprintf("Error: %v", m.podsError)
+		content = styles.ErrorStyle.Render(errorMsg)
+	} else if m.currentNamespace == "" {
+		// No namespace selected
+		content = styles.PlaceholderStyle.Render("Select a namespace to view pods")
+	} else if len(m.pods) == 0 {
+		// Empty state
+		content = styles.PlaceholderStyle.Render("No pods in this namespace")
+	} else {
+		// Render pod list
+		var podLines []string
+		for _, pod := range m.pods {
+			statusStyle := m.getPodStatusStyle(pod.Status)
+			statusText := statusStyle.Render(pod.Status)
+			line := fmt.Sprintf("%-12s %s", statusText, pod.Name)
+			podLines = append(podLines, line)
+		}
+		content = lipgloss.JoinVertical(lipgloss.Left, podLines...)
+	}
+
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, "", content)
 
 	// Apply border style with calculated dimensions
 	contentWidth := width - 4   // 2 for border + 2*2 for padding
@@ -750,7 +840,21 @@ func (m AppModel) renderPodPanel(width, height int) string {
 	return styles.PanelBorderStyle.
 		Width(contentWidth).
 		Height(contentHeight).
-		Render(content)
+		Render(fullContent)
+}
+
+// getPodStatusStyle returns the appropriate style for a given pod status
+func (m AppModel) getPodStatusStyle(status string) lipgloss.Style {
+	switch status {
+	case "Running", "Succeeded":
+		return styles.RunningStyle
+	case "Pending":
+		return styles.PendingStyle
+	case "Failed":
+		return styles.FailedStyle
+	default:
+		return styles.DimStyle
+	}
 }
 
 // renderActionsPanel renders the placeholder actions panel

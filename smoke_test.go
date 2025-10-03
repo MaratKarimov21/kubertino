@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maratkarimov/kubertino/internal/config"
+	"github.com/maratkarimov/kubertino/internal/k8s"
 	"github.com/maratkarimov/kubertino/internal/tui"
 )
 
@@ -15,6 +16,13 @@ type mockAdapter struct{}
 
 func (m *mockAdapter) GetNamespaces(context string) ([]string, error) {
 	return []string{"default", "kube-system"}, nil
+}
+
+func (m *mockAdapter) GetPods(context, namespace string) ([]k8s.Pod, error) {
+	return []k8s.Pod{
+		{Name: "test-pod-1", Status: "Running"},
+		{Name: "test-pod-2", Status: "Pending"},
+	}, nil
 }
 
 func main() {

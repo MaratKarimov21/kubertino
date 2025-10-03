@@ -159,9 +159,100 @@ func (k *KubectlAdapter) GetNamespaces(ctxName string) ([]string, error) {
 	return namespaces, nil
 }
 
-// GetPods is a placeholder for future implementation
-func (k *KubectlAdapter) GetPods(context, namespace string) ([]Pod, error) {
-	return nil, errors.New("not implemented")
+// GetPods fetches pods for the specified context and namespace using kubectl
+func (k *KubectlAdapter) GetPods(ctxName, namespace string) ([]Pod, error) {
+	// Validate context name for security
+	if err := validateContextName(ctxName); err != nil {
+		return nil, err
+	}
+
+	// Validate namespace name for security
+	if err := validateNamespaceName(namespace); err != nil {
+		return nil, err
+	}
+
+	// Find kubectl in PATH
+	kubectlPath, err := exec.LookPath("kubectl")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKubectlNotFound, err)
+	}
+
+	// Expand kubeconfig path
+	kubeconfigPath, err := expandPath(k.kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand kubeconfig path: %w", err)
+	}
+
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Execute kubectl command
+	cmd := exec.CommandContext(ctx, kubectlPath, "--kubeconfig", kubeconfigPath, "--context", ctxName, "get", "pods", "-n", namespace, "-o", "json")
+	output, err := cmd.Output()
+
+	if err != nil {
+		// Check for specific error types
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("%w: kubectl command timed out after 10s", ErrTimeout)
+		}
+
+		// Check for exit error to extract stderr
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := string(exitErr.Stderr)
+
+			// Check for permission denied
+			if strings.Contains(stderr, "forbidden") || strings.Contains(stderr, "Forbidden") {
+				return nil, fmt.Errorf("%w: %s", ErrPermissionDenied, stderr)
+			}
+
+			// Check for namespace not found
+			if strings.Contains(stderr, "namespace") && (strings.Contains(stderr, "not found") || strings.Contains(stderr, "does not exist")) {
+				return nil, fmt.Errorf("namespace not found: %s", namespace)
+			}
+
+			return nil, fmt.Errorf("kubectl command failed: %s", stderr)
+		}
+
+		return nil, fmt.Errorf("failed to execute kubectl: %w", err)
+	}
+
+	// Parse JSON response
+	var response PodList
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse kubectl output: %w", err)
+	}
+
+	// Convert to []Pod
+	pods := make([]Pod, 0, len(response.Items))
+	for _, item := range response.Items {
+		pods = append(pods, Pod{
+			Name:   item.Metadata.Name,
+			Status: item.Status.Phase,
+		})
+	}
+
+	return pods, nil
+}
+
+// validateNamespaceName validates a namespace name against allowed characters
+func validateNamespaceName(name string) error {
+	if name == "" {
+		return fmt.Errorf("namespace name cannot be empty")
+	}
+
+	// Kubernetes namespace names must be valid DNS labels
+	// RFC 1123: lowercase alphanumeric characters or '-', start/end with alphanumeric
+	matched, err := regexp.MatchString(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, name)
+	if err != nil {
+		return fmt.Errorf("failed to validate namespace name: %w", err)
+	}
+
+	if !matched {
+		return fmt.Errorf("invalid namespace name '%s': must be lowercase alphanumeric with optional hyphens", name)
+	}
+
+	return nil
 }
 
 // MatchContexts compares configured contexts with available kubectl contexts

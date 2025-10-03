@@ -67,4 +67,25 @@ var (
 	PlaceholderStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240")). // Gray
 				Italic(true)
+
+	// Pod status styles
+	// RunningStyle is used for running/succeeded pods (green)
+	RunningStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("10")). // Bright green
+			Bold(true)
+
+	// PendingStyle is used for pending pods (yellow)
+	PendingStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("11")). // Bright yellow
+			Bold(true)
+
+	// FailedStyle is used for failed pods (red)
+	FailedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("9")). // Bright red
+			Bold(true)
+
+	// LoadingStyle is used for loading indicators (gray, italic)
+	LoadingStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")). // Gray
+			Italic(true)
 )

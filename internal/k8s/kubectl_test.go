@@ -418,13 +418,3 @@ func TestNamespaceJSONParsing(t *testing.T) {
 	assert.Equal(t, "production", response.Items[2].Metadata.Name)
 	assert.Equal(t, "staging", response.Items[3].Metadata.Name)
 }
-
-func TestKubectlAdapter_NotImplemented(t *testing.T) {
-	adapter := NewKubectlAdapter("~/.kube/config")
-
-	t.Run("GetPods not implemented", func(t *testing.T) {
-		_, err := adapter.GetPods("test-context", "test-namespace")
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "not implemented")
-	})
-}
