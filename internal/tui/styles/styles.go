@@ -127,4 +127,30 @@ var (
 				Foreground(lipgloss.Color("0")).  // Black text
 				Background(lipgloss.Color("39")). // Bright cyan background
 				Bold(true)
+
+	// Action display styles (Story 4.1)
+
+	// ActionStyle is used for normal action display
+	// Light gray color
+	ActionStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("252")) // Light gray
+
+	// SelectedActionStyle is used for selected action highlighting
+	// Black text on bright cyan background with bold
+	SelectedActionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("0")).  // Black text
+				Background(lipgloss.Color("39")). // Bright cyan background
+				Bold(true)
+
+	// GroupHeaderStyle is used for action type group headers
+	// Gray color with italic
+	GroupHeaderStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")). // Gray
+				Italic(true)
+
+	// ShortcutStyle is used for shortcut key highlighting
+	// Orange/yellow color with bold
+	ShortcutStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214")). // Orange/yellow
+			Bold(true)
 )

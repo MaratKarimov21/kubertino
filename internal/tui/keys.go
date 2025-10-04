@@ -8,8 +8,8 @@ type KeyMap struct {
 	Up       []string // Keys for navigating up (up arrow, k)
 	Down     []string // Keys for navigating down (down arrow, j)
 	Enter    []string // Keys for selection (enter)
-	Tab      []string // Keys for switching focus forward (tab) - Story 3.3
-	ShiftTab []string // Keys for switching focus backward (shift+tab) - Story 3.3
+	Tab      []string // Keys for switching focus forward (tab) - Story 3.3, 4.1: Namespaces → Pods → Actions
+	ShiftTab []string // Keys for switching focus backward (shift+tab) - Story 3.3, 4.1: Actions → Pods → Namespaces
 }
 
 // DefaultKeyMap returns the default keyboard bindings
@@ -19,8 +19,8 @@ func DefaultKeyMap() KeyMap {
 		Up:       []string{"up", "k"},
 		Down:     []string{"down", "j"},
 		Enter:    []string{"enter"},
-		Tab:      []string{"tab"},       // Story 3.3: Focus switching
-		ShiftTab: []string{"shift+tab"}, // Story 3.3: Backward focus switching
+		Tab:      []string{"tab"},       // Story 3.3, 4.1: Three-panel focus switching
+		ShiftTab: []string{"shift+tab"}, // Story 3.3, 4.1: Three-panel backward focus switching
 	}
 }
 

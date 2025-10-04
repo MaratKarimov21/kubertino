@@ -111,7 +111,7 @@ func TestRenderSplitLayout(t *testing.T) {
 
 	// Verify placeholder text (may be wrapped across lines)
 	assert.True(t, strings.Contains(output, "Select a namespace") || strings.Contains(output, "view pods"), "should contain pods placeholder")
-	assert.True(t, strings.Contains(output, "Available actions") || strings.Contains(output, "appear here"), "should contain actions placeholder")
+	assert.True(t, strings.Contains(output, "No actions configured") || strings.Contains(output, "actions"), "should contain actions placeholder")
 
 	// Verify namespace list is present
 	assert.Contains(t, output, "Namespaces", "should contain Namespaces title")
@@ -339,7 +339,7 @@ func TestRenderActionsPanel(t *testing.T) {
 	panel := model.renderActionsPanel(40, 11)
 
 	assert.Contains(t, panel, "Actions")
-	assert.True(t, strings.Contains(panel, "Available actions") || strings.Contains(panel, "appear here"))
+	assert.True(t, strings.Contains(panel, "No actions configured") || strings.Contains(panel, "actions"))
 }
 
 // TestRenderNamespacePanel verifies namespace panel includes content

@@ -47,7 +47,7 @@ type PanelType int
 const (
 	PanelNamespaces PanelType = iota
 	PanelPods
-	// PanelActions will be added in Epic 4
+	PanelActions // Story 4.1
 )
 
 // AppModel is the main Bubble Tea model for the Kubertino TUI
@@ -87,20 +87,27 @@ type AppModel struct {
 	focusedPanel     PanelType // Which panel has keyboard focus
 	selectedPodIndex int       // Index of selected pod in pods slice (-1 if none)
 	podScrollOffset  int       // Scroll offset for long pod lists
+	// Actions state (Story 4.1)
+	actions             []config.Action // Actions for current context
+	selectedActionIndex int             // Index of selected action (-1 if none)
+	actionsScrollOffset int             // Scroll offset for long action lists
+	actionsPanelHeight  int             // Height of actions panel for scroll calculation
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
 func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 	model := AppModel{
-		config:            cfg,
-		contexts:          cfg.Contexts,
-		keys:              DefaultKeyMap(),
-		kubeAdapter:       adapter,
-		defaultPodIndex:   -1,
-		defaultPodWarning: "",
-		focusedPanel:      PanelNamespaces, // Story 3.3: Start with namespace panel focused
-		selectedPodIndex:  -1,              // Story 3.3: No pod selected initially
-		podScrollOffset:   0,               // Story 3.3: No scroll offset initially
+		config:              cfg,
+		contexts:            cfg.Contexts,
+		keys:                DefaultKeyMap(),
+		kubeAdapter:         adapter,
+		defaultPodIndex:     -1,
+		defaultPodWarning:   "",
+		focusedPanel:        PanelNamespaces, // Story 3.3: Start with namespace panel focused
+		selectedPodIndex:    -1,              // Story 3.3: No pod selected initially
+		podScrollOffset:     0,               // Story 3.3: No scroll offset initially
+		selectedActionIndex: -1,              // Story 4.1: No action selected initially
+		actionsScrollOffset: 0,               // Story 4.1: No scroll offset initially
 	}
 
 	// Initialize viewMode based on number of contexts
@@ -111,6 +118,8 @@ func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 		// Auto-select single context
 		model.currentContext = &cfg.Contexts[0]
 		model.viewMode = viewModeNamespaceView
+		// Load actions from context (Story 4.1)
+		model.actions = cfg.Contexts[0].Actions
 	}
 
 	return model
@@ -260,13 +269,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedNamespaceIndex = 0 // Reset namespace selection
 				m.namespaceViewportStart = 0 // Reset viewport position
 				m.namespaces = nil           // Clear previous namespaces
+				// Load actions from context (Story 4.1)
+				m.actions = m.currentContext.Actions
+				m.selectedActionIndex = -1
+				m.actionsScrollOffset = 0
 				return m, m.fetchNamespacesCmd()
 			}
 		}
 
 		// Handle namespace view navigation
 		if m.viewMode == viewModeNamespaceView {
-			// Handle Tab key for focus switching (Story 3.3)
+			// Handle Tab key for focus switching (Story 3.3, 4.1)
 			if msg.String() == "tab" {
 				switch m.focusedPanel {
 				case PanelNamespaces:
@@ -276,21 +289,33 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedPodIndex = 0
 					}
 				case PanelPods:
+					m.focusedPanel = PanelActions
+					// Auto-select first action when focusing actions panel (Story 4.1)
+					if len(m.actions) > 0 && m.selectedActionIndex == -1 {
+						m.selectedActionIndex = 0
+					}
+				case PanelActions:
 					m.focusedPanel = PanelNamespaces
 				}
 				return m, nil
 			}
 
-			// Handle Shift+Tab key for backward focus switching (Story 3.3)
+			// Handle Shift+Tab key for backward focus switching (Story 3.3, 4.1)
 			if msg.String() == "shift+tab" {
 				switch m.focusedPanel {
-				case PanelPods:
-					m.focusedPanel = PanelNamespaces
-				case PanelNamespaces:
+				case PanelActions:
 					m.focusedPanel = PanelPods
 					// Auto-select first pod when focusing pod panel
 					if len(m.pods) > 0 && m.selectedPodIndex == -1 {
 						m.selectedPodIndex = 0
+					}
+				case PanelPods:
+					m.focusedPanel = PanelNamespaces
+				case PanelNamespaces:
+					m.focusedPanel = PanelActions
+					// Auto-select first action when focusing actions panel (Story 4.1)
+					if len(m.actions) > 0 && m.selectedActionIndex == -1 {
+						m.selectedActionIndex = 0
 					}
 				}
 				return m, nil
@@ -361,7 +386,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Navigation (works in both normal and search mode)
-			// Handle arrow keys based on focused panel (Story 3.3)
+			// Handle arrow keys based on focused panel (Story 3.3, 4.1)
 			if KeyMatches(msg, m.keys.Up) {
 				if m.focusedPanel == PanelNamespaces {
 					// Navigate namespace panel
@@ -392,6 +417,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(m.pods) > 0 && m.selectedPodIndex > 0 {
 						m.selectedPodIndex--
 						m.adjustPodScrollOffset()
+					}
+				} else if m.focusedPanel == PanelActions {
+					// Navigate actions panel (Story 4.1)
+					if len(m.actions) > 0 && m.selectedActionIndex > 0 {
+						m.selectedActionIndex--
+						m.adjustActionsScrollOffset()
 					}
 				}
 				return m, nil
@@ -429,6 +460,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(m.pods) > 0 && m.selectedPodIndex < len(m.pods)-1 {
 						m.selectedPodIndex++
 						m.adjustPodScrollOffset()
+					}
+				} else if m.focusedPanel == PanelActions {
+					// Navigate actions panel (Story 4.1)
+					if len(m.actions) > 0 && m.selectedActionIndex < len(m.actions)-1 {
+						m.selectedActionIndex++
+						m.adjustActionsScrollOffset()
 					}
 				}
 				return m, nil
@@ -562,6 +599,76 @@ func (m *AppModel) adjustPodScrollOffset() {
 	if m.selectedPodIndex < m.podScrollOffset {
 		m.podScrollOffset = m.selectedPodIndex
 	}
+}
+
+// adjustActionsScrollOffset adjusts the actions scroll offset based on selected action index (Story 4.1)
+func (m *AppModel) adjustActionsScrollOffset() {
+	// Calculate visible window size based on actions panel height
+	// Actions panel height is roughly half the available height (same as pod panel)
+	availableHeight := m.termHeight - HeaderHeight
+	actionsPanelHeight := availableHeight / 2
+	m.actionsPanelHeight = actionsPanelHeight // Store for rendering
+
+	// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
+	visibleHeight := actionsPanelHeight - 8
+	if visibleHeight < 1 {
+		visibleHeight = 5 // Minimum visible items
+	}
+
+	// Scroll down if selection below visible window
+	if m.selectedActionIndex >= m.actionsScrollOffset+visibleHeight {
+		m.actionsScrollOffset = m.selectedActionIndex - visibleHeight + 1
+	}
+
+	// Scroll up if selection above visible window
+	if m.selectedActionIndex < m.actionsScrollOffset {
+		m.actionsScrollOffset = m.selectedActionIndex
+	}
+}
+
+// groupActionsByType groups actions by their type (Story 4.1)
+// Returns a map of type name to actions, preserving order
+func (m AppModel) groupActionsByType() map[string][]config.Action {
+	// Use a slice to maintain insertion order
+	type group struct {
+		typeName string
+		actions  []config.Action
+	}
+
+	seen := make(map[string]int) // type -> index in groups slice
+	var groups []group
+
+	for _, action := range m.actions {
+		typeName := action.Type
+		switch typeName {
+		case "pod_exec":
+			typeName = "Pod"
+		case "url":
+			typeName = "URL"
+		case "local":
+			typeName = "Local"
+		}
+
+		if idx, exists := seen[typeName]; exists {
+			// Add to existing group
+			groups[idx].actions = append(groups[idx].actions, action)
+		} else {
+			// Create new group
+			seen[typeName] = len(groups)
+			groups = append(groups, group{
+				typeName: typeName,
+				actions:  []config.Action{action},
+			})
+		}
+	}
+
+	// Convert to map for return
+	result := make(map[string][]config.Action)
+	for _, g := range groups {
+		result[g.typeName] = g.actions
+	}
+
+	return result
 }
 
 // getMatchIndices returns the match indices for a given namespace in the current search
@@ -1062,20 +1169,112 @@ func (m AppModel) getPodStatusStyle(status string) lipgloss.Style {
 	}
 }
 
-// renderActionsPanel renders the placeholder actions panel
+// renderActionsPanel renders the actions panel with real data (Story 4.1)
 func (m AppModel) renderActionsPanel(width, height int) string {
 	title := styles.PanelTitleStyle.Render("Actions")
-	placeholder := styles.PlaceholderStyle.Render("Available actions will appear here")
-	content := lipgloss.JoinVertical(lipgloss.Left, title, "", placeholder)
+
+	var content string
+
+	if len(m.actions) == 0 {
+		// Empty state
+		content = styles.PlaceholderStyle.Render("No actions configured")
+	} else {
+		// Calculate visible window for scrolling
+		// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
+		visibleHeight := height - 8
+		if visibleHeight < 1 {
+			visibleHeight = 5 // Minimum visible items
+		}
+
+		// Group actions by type
+		grouped := m.groupActionsByType()
+		hasMultipleTypes := len(grouped) > 1
+
+		var actionLines []string
+		displayIndex := 0 // Tracks position across all actions (for selection)
+
+		// Render actions with grouping
+		for _, action := range m.actions {
+			// Determine type name for grouping
+			typeName := action.Type
+			switch typeName {
+			case "pod_exec":
+				typeName = "Pod"
+			case "url":
+				typeName = "URL"
+			case "local":
+				typeName = "Local"
+			}
+
+			// Add group header if needed (only once per group, only if multiple types)
+			if hasMultipleTypes && displayIndex == 0 {
+				// First action - always show header
+				header := fmt.Sprintf("— %s Actions —", typeName)
+				actionLines = append(actionLines, styles.GroupHeaderStyle.Render(header))
+			} else if hasMultipleTypes && displayIndex > 0 {
+				// Check if this is the first action of a new type
+				prevAction := m.actions[displayIndex-1]
+				if prevAction.Type != action.Type {
+					header := fmt.Sprintf("— %s Actions —", typeName)
+					actionLines = append(actionLines, styles.GroupHeaderStyle.Render(header))
+				}
+			}
+
+			// Check if within visible window
+			if displayIndex >= m.actionsScrollOffset &&
+				displayIndex < m.actionsScrollOffset+visibleHeight {
+
+				shortcut := styles.ShortcutStyle.Render(fmt.Sprintf("[%s]", action.Shortcut))
+
+				var line string
+				if displayIndex == m.selectedActionIndex {
+					actionName := styles.SelectedActionStyle.Render(action.Name)
+					line = fmt.Sprintf("%s %s", shortcut, actionName)
+				} else {
+					actionName := styles.ActionStyle.Render(action.Name)
+					line = fmt.Sprintf("%s %s", shortcut, actionName)
+				}
+
+				actionLines = append(actionLines, line)
+			}
+
+			displayIndex++
+		}
+
+		content = lipgloss.JoinVertical(lipgloss.Left, actionLines...)
+
+		// Show scroll indicators if needed
+		if m.actionsScrollOffset > 0 {
+			scrollUp := styles.HelpTextStyle.Render("↑ More above")
+			content = lipgloss.JoinVertical(lipgloss.Left, scrollUp, content)
+		}
+		if m.actionsScrollOffset+visibleHeight < len(m.actions) {
+			remaining := len(m.actions) - (m.actionsScrollOffset + visibleHeight)
+			scrollDown := styles.HelpTextStyle.Render(fmt.Sprintf("↓ %d more", remaining))
+			content = lipgloss.JoinVertical(lipgloss.Left, content, scrollDown)
+		}
+
+		// Add help text
+		helpText := styles.HelpTextStyle.Render("[key]: Execute action")
+		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
+	}
+
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, "", content)
+
+	// Select border style based on focus
+	borderStyle := styles.UnfocusedPanelBorderStyle
+	if m.focusedPanel == PanelActions {
+		borderStyle = styles.FocusedPanelBorderStyle
+	}
 
 	// Apply border style with calculated dimensions
 	contentWidth := width - 4   // 2 for border + 2*2 for padding
 	contentHeight := height - 2 // 2 for border
 
-	return styles.PanelBorderStyle.
+	return borderStyle.
 		Width(contentWidth).
 		Height(contentHeight).
-		Render(content)
+		Render(fullContent)
 }
 
 // renderTerminalTooSmallWarning renders a warning message when terminal is too small
