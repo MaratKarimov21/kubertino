@@ -329,7 +329,7 @@ func TestValidate_WithFixtures(t *testing.T) {
 			name:        "invalid regex",
 			filename:    "../testdata/invalid-regex.yml",
 			wantErr:     true,
-			errContains: "invalid default_pod_pattern regex",
+			errContains: "invalid default_pod_pattern", // Updated to match actual error from parser
 		},
 		{
 			name:        "invalid action type",
@@ -348,6 +348,15 @@ func TestValidate_WithFixtures(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg, err := Parse(tt.filename)
+			// Story 3.2: Invalid regex now caught during parsing, not validation
+			if tt.name == "invalid regex" {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				return
+			}
+
 			require.NoError(t, err)
 
 			err = Validate(cfg)

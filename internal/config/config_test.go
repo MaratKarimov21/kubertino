@@ -115,6 +115,80 @@ contexts:
 	assert.Equal(t, "test", cfg.Contexts[0].Name)
 }
 
+// TestParse_RegexCompilation tests that default_pod_pattern is compiled during parsing (Story 3.2)
+func TestParse_RegexCompilation(t *testing.T) {
+	tests := []struct {
+		name        string
+		yamlContent string
+		wantPattern string
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name: "valid regex pattern",
+			yamlContent: `version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: "^api-.*"`,
+			wantPattern: "^api-.*",
+			wantErr:     false,
+		},
+		{
+			name: "invalid regex pattern",
+			yamlContent: `version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: "api-["`,
+			wantErr:     true,
+			errContains: "invalid default_pod_pattern",
+		},
+		{
+			name: "empty pattern (valid)",
+			yamlContent: `version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: ""`,
+			wantPattern: "",
+			wantErr:     false,
+		},
+		{
+			name: "complex regex pattern",
+			yamlContent: `version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: "^(api|web)-.*-v[0-9]+$"`,
+			wantPattern: "^(api|web)-.*-v[0-9]+$",
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp file
+			tempFile := filepath.Join(t.TempDir(), "config.yml")
+			err := os.WriteFile(tempFile, []byte(tt.yamlContent), 0644)
+			require.NoError(t, err)
+
+			cfg, err := Parse(tempFile)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+			assert.Equal(t, tt.wantPattern, cfg.Contexts[0].DefaultPodPattern)
+			if tt.wantPattern != "" {
+				assert.NotNil(t, cfg.Contexts[0].CompiledPattern)
+			}
+		})
+	}
+}
+
 // Helper functions for creating test data
 func NewTestConfig() *Config {
 	return &Config{

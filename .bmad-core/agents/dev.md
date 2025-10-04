@@ -57,6 +57,12 @@ core_principles:
 # All commands require * prefix when used (e.g., *help)
 commands:
   - help: Show numbered list of the following commands to allow selection
+  - debug-fix {debug_log}: |
+      Fix bug documented in debug log with structured approach tracking.
+      Reads: docs/debug/{epic}.{story}.md for QA's analysis and instructions.
+      Updates: Same file with your approach, changes, and verification results.
+      Use when: QA has created debug report and you're ready to implement fix.
+      Executes dev-debug-fix task.
   - develop-story:
       - order-of-execution: 'Read (first or next) task→Implement Task and its subtasks→Write tests→Execute validations→Only if ALL pass, then update the task checkbox with [x]→Update story section File List to ensure it lists and new or modified or deleted source file→repeat order-of-execution until complete'
       - story-file-updates-ONLY:
@@ -76,6 +82,7 @@ dependencies:
     - story-dod-checklist.md
   tasks:
     - apply-qa-fixes.md
+    - dev-debug-fix.md
     - execute-checklist.md
     - validate-next-story.md
 ```

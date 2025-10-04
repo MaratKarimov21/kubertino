@@ -64,13 +64,23 @@ story-file-permissions:
 # All commands require * prefix when used (e.g., *help)
 commands:
   - help: Show numbered list of the following commands to allow selection
+  - debug-report {story}: |
+      Create structured debug report for bugs found during user testing after story completion.
+      Creates: docs/debug/{epic}.{story}.md with bug analysis and instructions for Dev.
+      Use when: Story is "Done" but user found bugs during manual testing.
+      Executes qa-debug-report task.
   - gate {story}: Execute qa-gate task to write/update quality gate decision in directory from qa.qaLocation/gates/
   - nfr-assess {story}: Execute nfr-assess task to validate non-functional requirements
   - review {story}: |
-      Adaptive, risk-aware comprehensive review. 
+      Adaptive, risk-aware comprehensive review.
       Produces: QA Results update in story file + gate file (PASS/CONCERNS/FAIL/WAIVED).
       Gate file location: qa.qaLocation/gates/{epic}.{story}-{slug}.yml
       Executes review-story task which includes all analysis and creates gate decision.
+  - review-debug {story}: |
+      Final review of debug fix after user confirms it works.
+      Checks for unnecessary changes left behind during debugging.
+      Appends final session to docs/debug/{epic}.{story}.md.
+      Updates debug log status to "Closed" if all clean.
   - risk-profile {story}: Execute risk-profile task to generate risk assessment matrix
   - test-design {story}: Execute test-design task to create comprehensive test scenarios
   - trace {story}: Execute trace-requirements task to map requirements to tests using Given-When-Then
@@ -80,6 +90,7 @@ dependencies:
     - technical-preferences.md
   tasks:
     - nfr-assess.md
+    - qa-debug-report.md
     - qa-gate.md
     - review-story.md
     - risk-profile.md

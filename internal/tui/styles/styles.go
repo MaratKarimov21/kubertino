@@ -88,4 +88,22 @@ var (
 	LoadingStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")). // Gray
 			Italic(true)
+
+	// DefaultPodStyle is used for default pod indicator (Story 3.2)
+	// Bright blue/cyan color with bold
+	DefaultPodStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39")). // Bright blue/cyan
+			Bold(true)
+
+	// WarningStyle is used for warning messages (Story 3.2)
+	// Orange color with bold
+	WarningStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214")). // Orange
+			Bold(true)
+
+	// HelpTextStyle is used for help text (Story 3.2)
+	// Gray color with italic
+	HelpTextStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("240")). // Gray
+			Italic(true)
 )

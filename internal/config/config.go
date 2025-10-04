@@ -1,5 +1,7 @@
 package config
 
+import "regexp"
+
 // Config represents the complete user configuration from ~/.kubertino.yml
 type Config struct {
 	Version  string    `yaml:"version"`
@@ -14,6 +16,9 @@ type Context struct {
 	DefaultPodPattern  string   `yaml:"default_pod_pattern"`
 	FavoriteNamespaces []string `yaml:"favorite_namespaces"`
 	Actions            []Action `yaml:"actions"`
+
+	// Runtime fields (not in YAML)
+	CompiledPattern *regexp.Regexp `yaml:"-"` // Compiled default_pod_pattern for performance
 }
 
 // Action represents a configurable action with a shortcut

@@ -67,6 +67,9 @@ type AppModel struct {
 	podsLoading      bool
 	podsError        error
 	currentNamespace string
+	// Default pod state (Story 3.2)
+	defaultPodIndex   int    // Index of default pod in pods slice (-1 if no match)
+	defaultPodWarning string // Warning message if no pods match pattern
 	// Terminal size fields
 	termWidth        int
 	termHeight       int
@@ -76,10 +79,12 @@ type AppModel struct {
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
 func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 	model := AppModel{
-		config:      cfg,
-		contexts:    cfg.Contexts,
-		keys:        DefaultKeyMap(),
-		kubeAdapter: adapter,
+		config:            cfg,
+		contexts:          cfg.Contexts,
+		keys:              DefaultKeyMap(),
+		kubeAdapter:       adapter,
+		defaultPodIndex:   -1,
+		defaultPodWarning: "",
 	}
 
 	// Initialize viewMode based on number of contexts
@@ -176,6 +181,27 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.podsError = nil
 		m.pods = msg.pods
+
+		// Find default pod based on pattern (Story 3.2)
+		if m.currentContext != nil && len(m.pods) > 0 {
+			idx, found := k8s.MatchDefaultPod(m.pods, m.currentContext.CompiledPattern)
+			m.defaultPodIndex = idx
+
+			if !found {
+				// Pods exist but none match pattern
+				pattern := m.currentContext.DefaultPodPattern
+				if pattern == "" {
+					pattern = "(empty)"
+				}
+				m.defaultPodWarning = fmt.Sprintf("No pods match pattern: %s", pattern)
+			} else {
+				m.defaultPodWarning = ""
+			}
+		} else {
+			m.defaultPodIndex = -1
+			m.defaultPodWarning = ""
+		}
+
 		return m, nil
 
 	case tea.KeyMsg:
@@ -820,15 +846,38 @@ func (m AppModel) renderPodPanel(width, height int) string {
 		// Empty state
 		content = styles.PlaceholderStyle.Render("No pods in this namespace")
 	} else {
-		// Render pod list
+		// Render pod list with default pod indicator (Story 3.2)
 		var podLines []string
-		for _, pod := range m.pods {
+		for i, pod := range m.pods {
 			statusStyle := m.getPodStatusStyle(pod.Status)
 			statusText := statusStyle.Render(pod.Status)
-			line := fmt.Sprintf("%-12s %s", statusText, pod.Name)
+
+			// Add default pod marker
+			marker := "  " // Two spaces for alignment
+			if i == m.defaultPodIndex {
+				marker = "★ " // Star for default pod
+			}
+
+			// Apply special style to default pod name
+			podName := pod.Name
+			if i == m.defaultPodIndex {
+				podName = styles.DefaultPodStyle.Render(podName)
+			}
+
+			line := fmt.Sprintf("%s%-12s %s", marker, statusText, podName)
 			podLines = append(podLines, line)
 		}
 		content = lipgloss.JoinVertical(lipgloss.Left, podLines...)
+
+		// Add warning if no match (Story 3.2)
+		if m.defaultPodWarning != "" {
+			warningText := styles.WarningStyle.Render(fmt.Sprintf("⚠ %s", m.defaultPodWarning))
+			content = lipgloss.JoinVertical(lipgloss.Left, content, "", warningText)
+		}
+
+		// Add help text (Story 3.2)
+		helpText := styles.HelpTextStyle.Render("★ = Default pod (used for actions)")
+		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}
 
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, "", content)

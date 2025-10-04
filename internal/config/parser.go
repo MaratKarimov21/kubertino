@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -29,6 +30,19 @@ func Parse(filename string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Compile default_pod_pattern for each context
+	for i := range config.Contexts {
+		ctx := &config.Contexts[i]
+		if ctx.DefaultPodPattern != "" {
+			compiled, err := regexp.Compile(ctx.DefaultPodPattern)
+			if err != nil {
+				return nil, fmt.Errorf("context '%s': invalid default_pod_pattern '%s': %w",
+					ctx.Name, ctx.DefaultPodPattern, err)
+			}
+			ctx.CompiledPattern = compiled
+		}
 	}
 
 	return &config, nil
