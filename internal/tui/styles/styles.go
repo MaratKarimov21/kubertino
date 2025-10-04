@@ -106,4 +106,25 @@ var (
 	HelpTextStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")). // Gray
 			Italic(true)
+
+	// FocusedPanelBorderStyle is used for focused panel borders (Story 3.3)
+	// Bright cyan border with rounded corners and padding
+	FocusedPanelBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("39")). // Bright cyan
+				Padding(1, 2)
+
+	// UnfocusedPanelBorderStyle is used for unfocused panel borders (Story 3.3)
+	// Gray border with rounded corners and padding
+	UnfocusedPanelBorderStyle = lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("240")). // Gray
+					Padding(1, 2)
+
+	// SelectedPodStyle is used for selected pod highlighting (Story 3.3)
+	// Black text on bright cyan background with bold
+	SelectedPodStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("0")).  // Black text
+				Background(lipgloss.Color("39")). // Bright cyan background
+				Bold(true)
 )

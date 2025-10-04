@@ -41,6 +41,15 @@ type podsFetchedMsg struct {
 	err  error
 }
 
+// PanelType represents which panel has keyboard focus
+type PanelType int
+
+const (
+	PanelNamespaces PanelType = iota
+	PanelPods
+	// PanelActions will be added in Epic 4
+)
+
 // AppModel is the main Bubble Tea model for the Kubertino TUI
 type AppModel struct {
 	config                 *config.Config
@@ -74,6 +83,10 @@ type AppModel struct {
 	termWidth        int
 	termHeight       int
 	terminalTooSmall bool
+	// Focus and navigation state (Story 3.3)
+	focusedPanel     PanelType // Which panel has keyboard focus
+	selectedPodIndex int       // Index of selected pod in pods slice (-1 if none)
+	podScrollOffset  int       // Scroll offset for long pod lists
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
@@ -85,6 +98,9 @@ func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 		kubeAdapter:       adapter,
 		defaultPodIndex:   -1,
 		defaultPodWarning: "",
+		focusedPanel:      PanelNamespaces, // Story 3.3: Start with namespace panel focused
+		selectedPodIndex:  -1,              // Story 3.3: No pod selected initially
+		podScrollOffset:   0,               // Story 3.3: No scroll offset initially
 	}
 
 	// Initialize viewMode based on number of contexts
@@ -250,6 +266,36 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Handle namespace view navigation
 		if m.viewMode == viewModeNamespaceView {
+			// Handle Tab key for focus switching (Story 3.3)
+			if msg.String() == "tab" {
+				switch m.focusedPanel {
+				case PanelNamespaces:
+					m.focusedPanel = PanelPods
+					// Auto-select first pod when focusing pod panel
+					if len(m.pods) > 0 && m.selectedPodIndex == -1 {
+						m.selectedPodIndex = 0
+					}
+				case PanelPods:
+					m.focusedPanel = PanelNamespaces
+				}
+				return m, nil
+			}
+
+			// Handle Shift+Tab key for backward focus switching (Story 3.3)
+			if msg.String() == "shift+tab" {
+				switch m.focusedPanel {
+				case PanelPods:
+					m.focusedPanel = PanelNamespaces
+				case PanelNamespaces:
+					m.focusedPanel = PanelPods
+					// Auto-select first pod when focusing pod panel
+					if len(m.pods) > 0 && m.selectedPodIndex == -1 {
+						m.selectedPodIndex = 0
+					}
+				}
+				return m, nil
+			}
+
 			// Handle search mode activation
 			if !m.searchMode && msg.String() == "/" {
 				m.activateSearch()
@@ -267,6 +313,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.podsLoading = true
 						m.podsError = nil
 						m.pods = nil
+						// Reset pod panel state (Story 3.3)
+						m.selectedPodIndex = -1
+						m.defaultPodIndex = -1
+						m.podScrollOffset = 0
+						m.defaultPodWarning = ""
 						return m, m.fetchPodsCmd()
 					}
 					return m, nil
@@ -299,59 +350,85 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.podsLoading = true
 					m.podsError = nil
 					m.pods = nil
+					// Reset pod panel state (Story 3.3)
+					m.selectedPodIndex = -1
+					m.defaultPodIndex = -1
+					m.podScrollOffset = 0
+					m.defaultPodWarning = ""
 					return m, m.fetchPodsCmd()
 				}
 				return m, nil
 			}
 
 			// Navigation (works in both normal and search mode)
-			// Get the list we're navigating (filtered or full)
-			navList := m.namespaces
-			if m.searchMode && m.filteredNamespaces != nil {
-				navList = m.filteredNamespaces
-			}
-
+			// Handle arrow keys based on focused panel (Story 3.3)
 			if KeyMatches(msg, m.keys.Up) {
-				// Navigate up with wrap-around
-				if len(navList) > 0 {
-					m.selectedNamespaceIndex--
-					if m.selectedNamespaceIndex < 0 {
-						m.selectedNamespaceIndex = len(navList) - 1
-						// Wrap to end: adjust viewport to show last item
-						availableHeight := m.height - 4
-						if availableHeight < 1 {
-							availableHeight = 10
+				if m.focusedPanel == PanelNamespaces {
+					// Navigate namespace panel
+					navList := m.namespaces
+					if m.searchMode && m.filteredNamespaces != nil {
+						navList = m.filteredNamespaces
+					}
+
+					if len(navList) > 0 {
+						m.selectedNamespaceIndex--
+						if m.selectedNamespaceIndex < 0 {
+							m.selectedNamespaceIndex = len(navList) - 1
+							// Wrap to end: adjust viewport to show last item
+							availableHeight := m.height - 4
+							if availableHeight < 1 {
+								availableHeight = 10
+							}
+							if len(navList) > availableHeight {
+								m.namespaceViewportStart = len(navList) - availableHeight
+							}
+						} else if m.selectedNamespaceIndex < m.namespaceViewportStart {
+							// Scroll up: selected item went above viewport
+							m.namespaceViewportStart = m.selectedNamespaceIndex
 						}
-						if len(navList) > availableHeight {
-							m.namespaceViewportStart = len(navList) - availableHeight
-						}
-					} else if m.selectedNamespaceIndex < m.namespaceViewportStart {
-						// Scroll up: selected item went above viewport
-						m.namespaceViewportStart = m.selectedNamespaceIndex
+					}
+				} else if m.focusedPanel == PanelPods {
+					// Navigate pod panel (Story 3.3)
+					if len(m.pods) > 0 && m.selectedPodIndex > 0 {
+						m.selectedPodIndex--
+						m.adjustPodScrollOffset()
 					}
 				}
 				return m, nil
 			}
 
 			if KeyMatches(msg, m.keys.Down) {
-				// Navigate down with wrap-around
-				if len(navList) > 0 {
-					m.selectedNamespaceIndex++
-					if m.selectedNamespaceIndex >= len(navList) {
-						m.selectedNamespaceIndex = 0
-						// Wrap to start: reset viewport to beginning
-						m.namespaceViewportStart = 0
-					} else {
-						// Check if we need to scroll down
-						availableHeight := m.height - 4
-						if availableHeight < 1 {
-							availableHeight = 10
+				if m.focusedPanel == PanelNamespaces {
+					// Navigate namespace panel
+					navList := m.namespaces
+					if m.searchMode && m.filteredNamespaces != nil {
+						navList = m.filteredNamespaces
+					}
+
+					if len(navList) > 0 {
+						m.selectedNamespaceIndex++
+						if m.selectedNamespaceIndex >= len(navList) {
+							m.selectedNamespaceIndex = 0
+							// Wrap to start: reset viewport to beginning
+							m.namespaceViewportStart = 0
+						} else {
+							// Check if we need to scroll down
+							availableHeight := m.height - 4
+							if availableHeight < 1 {
+								availableHeight = 10
+							}
+							viewportEnd := m.namespaceViewportStart + availableHeight
+							if m.selectedNamespaceIndex >= viewportEnd {
+								// Scroll down: selected item went below viewport
+								m.namespaceViewportStart = m.selectedNamespaceIndex - availableHeight + 1
+							}
 						}
-						viewportEnd := m.namespaceViewportStart + availableHeight
-						if m.selectedNamespaceIndex >= viewportEnd {
-							// Scroll down: selected item went below viewport
-							m.namespaceViewportStart = m.selectedNamespaceIndex - availableHeight + 1
-						}
+					}
+				} else if m.focusedPanel == PanelPods {
+					// Navigate pod panel (Story 3.3)
+					if len(m.pods) > 0 && m.selectedPodIndex < len(m.pods)-1 {
+						m.selectedPodIndex++
+						m.adjustPodScrollOffset()
 					}
 				}
 				return m, nil
@@ -461,6 +538,30 @@ func (m *AppModel) performFuzzySearch(query string) []string {
 	}
 
 	return results
+}
+
+// adjustPodScrollOffset adjusts the pod scroll offset based on selected pod index (Story 3.3)
+func (m *AppModel) adjustPodScrollOffset() {
+	// Calculate visible window size based on pod panel height
+	// Pod panel height is roughly half the available height
+	availableHeight := m.termHeight - HeaderHeight
+	podPanelHeight := availableHeight / 2
+
+	// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
+	visibleHeight := podPanelHeight - 8
+	if visibleHeight < 1 {
+		visibleHeight = 5 // Minimum visible items
+	}
+
+	// Scroll down if selection below visible window
+	if m.selectedPodIndex >= m.podScrollOffset+visibleHeight {
+		m.podScrollOffset = m.selectedPodIndex - visibleHeight + 1
+	}
+
+	// Scroll up if selection above visible window
+	if m.selectedPodIndex < m.podScrollOffset {
+		m.podScrollOffset = m.selectedPodIndex
+	}
 }
 
 // getMatchIndices returns the match indices for a given namespace in the current search
@@ -818,10 +919,16 @@ func (m AppModel) renderNamespacePanel(width, height int) string {
 	// Width calculation: Lip Gloss adds border (2) + padding (4) = 6 chars total
 	contentWidth := width - 6
 
+	// Select border style based on focus (Story 3.3)
+	borderStyle := styles.UnfocusedPanelBorderStyle
+	if m.focusedPanel == PanelNamespaces {
+		borderStyle = styles.FocusedPanelBorderStyle
+	}
+
 	// Don't use MaxHeight - it cuts off borders
 	// Instead, renderNamespaceList already limits content to contentHeight
 	// Just apply the border and let Lip Gloss add padding + border
-	return styles.PanelBorderStyle.
+	return borderStyle.
 		Width(contentWidth).
 		Render(content)
 }
@@ -846,28 +953,71 @@ func (m AppModel) renderPodPanel(width, height int) string {
 		// Empty state
 		content = styles.PlaceholderStyle.Render("No pods in this namespace")
 	} else {
-		// Render pod list with default pod indicator (Story 3.2)
+		// Calculate visible window for scrolling (Story 3.3)
+		// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) + warning (if any)
+		visibleHeight := height - 8
+		if m.defaultPodWarning != "" {
+			visibleHeight -= 2 // Extra space for warning
+		}
+		if visibleHeight < 1 {
+			visibleHeight = 5 // Minimum visible items
+		}
+
+		// Calculate visible pod range
+		visiblePods := m.pods[m.podScrollOffset:]
+		if len(visiblePods) > visibleHeight {
+			visiblePods = visiblePods[:visibleHeight]
+		}
+
+		// Render visible pods with markers (Story 3.2 + 3.3)
 		var podLines []string
-		for i, pod := range m.pods {
+		for i, pod := range visiblePods {
+			actualIndex := i + m.podScrollOffset
 			statusStyle := m.getPodStatusStyle(pod.Status)
 			statusText := statusStyle.Render(pod.Status)
 
-			// Add default pod marker
-			marker := "  " // Two spaces for alignment
-			if i == m.defaultPodIndex {
-				marker = "★ " // Star for default pod
+			// Build markers
+			markers := ""
+
+			// Default pod marker (Story 3.2)
+			if actualIndex == m.defaultPodIndex {
+				markers += "★ "
+			} else {
+				markers += "  "
 			}
 
-			// Apply special style to default pod name
+			// Selection marker (Story 3.3)
+			if actualIndex == m.selectedPodIndex {
+				markers += "> "
+			} else {
+				markers += "  "
+			}
+
+			// Apply styling
 			podName := pod.Name
-			if i == m.defaultPodIndex {
+			if actualIndex == m.selectedPodIndex {
+				// Selected pod gets special highlighting (Story 3.3)
+				podName = styles.SelectedPodStyle.Render(podName)
+			} else if actualIndex == m.defaultPodIndex {
+				// Default pod gets default styling (Story 3.2)
 				podName = styles.DefaultPodStyle.Render(podName)
 			}
 
-			line := fmt.Sprintf("%s%-12s %s", marker, statusText, podName)
+			line := fmt.Sprintf("%s%-12s %s", markers, statusText, podName)
 			podLines = append(podLines, line)
 		}
 		content = lipgloss.JoinVertical(lipgloss.Left, podLines...)
+
+		// Show scroll indicators (Story 3.3)
+		if m.podScrollOffset > 0 {
+			scrollUp := styles.HelpTextStyle.Render("↑ More above")
+			content = lipgloss.JoinVertical(lipgloss.Left, scrollUp, content)
+		}
+		if m.podScrollOffset+visibleHeight < len(m.pods) {
+			remaining := len(m.pods) - (m.podScrollOffset + visibleHeight)
+			scrollDown := styles.HelpTextStyle.Render(fmt.Sprintf("↓ %d more", remaining))
+			content = lipgloss.JoinVertical(lipgloss.Left, content, scrollDown)
+		}
 
 		// Add warning if no match (Story 3.2)
 		if m.defaultPodWarning != "" {
@@ -875,18 +1025,24 @@ func (m AppModel) renderPodPanel(width, height int) string {
 			content = lipgloss.JoinVertical(lipgloss.Left, content, "", warningText)
 		}
 
-		// Add help text (Story 3.2)
-		helpText := styles.HelpTextStyle.Render("★ = Default pod (used for actions)")
+		// Add help text (Story 3.2 + 3.3)
+		helpText := styles.HelpTextStyle.Render("★ = Default pod | > = Selected")
 		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}
 
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, "", content)
 
+	// Select border style based on focus (Story 3.3)
+	borderStyle := styles.UnfocusedPanelBorderStyle
+	if m.focusedPanel == PanelPods {
+		borderStyle = styles.FocusedPanelBorderStyle
+	}
+
 	// Apply border style with calculated dimensions
 	contentWidth := width - 4   // 2 for border + 2*2 for padding
 	contentHeight := height - 2 // 2 for border
 
-	return styles.PanelBorderStyle.
+	return borderStyle.
 		Width(contentWidth).
 		Height(contentHeight).
 		Render(fullContent)
