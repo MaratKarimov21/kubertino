@@ -295,6 +295,103 @@ func ValidateContexts(cfg *config.Config, kubeconfigPath string) error {
 	return nil
 }
 
+// ExecInPod returns a command configured to execute in a pod with interactive TTY
+func (k *KubectlAdapter) ExecInPod(ctxName, namespace, pod, container, command string) (*exec.Cmd, error) {
+	// Validate inputs for security
+	if err := validateContextName(ctxName); err != nil {
+		return nil, err
+	}
+	if err := validateNamespaceName(namespace); err != nil {
+		return nil, err
+	}
+	if err := validatePodName(pod); err != nil {
+		return nil, err
+	}
+	if container != "" {
+		if err := validateContainerName(container); err != nil {
+			return nil, err
+		}
+	}
+
+	// Find kubectl in PATH
+	kubectlPath, err := exec.LookPath("kubectl")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrKubectlNotFound, err)
+	}
+
+	// Expand kubeconfig path
+	kubeconfigPath, err := expandPath(k.kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to expand kubeconfig path: %w", err)
+	}
+
+	// Build kubectl exec command with interactive TTY
+	args := []string{
+		"--kubeconfig", kubeconfigPath,
+		"--context", ctxName,
+		"-n", namespace,
+		"exec",
+		"-it",
+		pod,
+	}
+
+	// Add container flag if specified (for multi-container pods)
+	if container != "" {
+		args = append(args, "-c", container)
+	}
+
+	// Add command
+	args = append(args, "--", "sh", "-c", command)
+
+	cmd := exec.Command(kubectlPath, args...)
+
+	// Set stdin/stdout/stderr for interactive mode
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd, nil
+}
+
+// validatePodName validates a pod name against allowed characters
+func validatePodName(name string) error {
+	if name == "" {
+		return fmt.Errorf("pod name cannot be empty")
+	}
+
+	// Kubernetes pod names must be valid DNS subdomain names
+	// RFC 1123: lowercase alphanumeric characters, '-' or '.', start/end with alphanumeric
+	matched, err := regexp.MatchString(`^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$`, name)
+	if err != nil {
+		return fmt.Errorf("failed to validate pod name: %w", err)
+	}
+
+	if !matched {
+		return fmt.Errorf("invalid pod name '%s': must be lowercase alphanumeric with optional hyphens or dots", name)
+	}
+
+	return nil
+}
+
+// validateContainerName validates a container name against allowed characters
+func validateContainerName(name string) error {
+	if name == "" {
+		return nil // Empty is OK - kubectl will use default
+	}
+
+	// Container names follow same rules as pod names (RFC 1123)
+	matched, err := regexp.MatchString(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, name)
+	if err != nil {
+		return fmt.Errorf("failed to validate container name: %w", err)
+	}
+
+	if !matched {
+		return fmt.Errorf("invalid container name '%s': must be lowercase alphanumeric with optional hyphens", name)
+	}
+
+	return nil
+}
+
 // expandPath expands ~ to the user's home directory
 func expandPath(path string) (string, error) {
 	if !strings.HasPrefix(path, "~") {

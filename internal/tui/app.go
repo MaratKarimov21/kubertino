@@ -3,10 +3,12 @@ package tui
 import (
 	"fmt"
 	"log/slog"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/maratkarimov/kubertino/internal/config"
+	"github.com/maratkarimov/kubertino/internal/executor"
 	"github.com/maratkarimov/kubertino/internal/k8s"
 	"github.com/maratkarimov/kubertino/internal/search"
 	"github.com/maratkarimov/kubertino/internal/tui/styles"
@@ -27,6 +29,7 @@ const (
 type KubeAdapter interface {
 	GetNamespaces(context string) ([]string, error)
 	GetPods(context, namespace string) ([]k8s.Pod, error)
+	ExecInPod(context, namespace, pod, container, command string) (*exec.Cmd, error)
 }
 
 // namespaceFetchedMsg is sent when namespaces are fetched
@@ -39,6 +42,11 @@ type namespaceFetchedMsg struct {
 type podsFetchedMsg struct {
 	pods []k8s.Pod
 	err  error
+}
+
+// execFinishedMsg is sent when an external command execution finishes
+type execFinishedMsg struct {
+	err error
 }
 
 // PanelType represents which panel has keyboard focus
@@ -92,6 +100,9 @@ type AppModel struct {
 	selectedActionIndex int             // Index of selected action (-1 if none)
 	actionsScrollOffset int             // Scroll offset for long action lists
 	actionsPanelHeight  int             // Height of actions panel for scroll calculation
+	// Executor and error state (Story 4.2)
+	executor     *executor.Executor
+	errorMessage string // Error message to display in TUI
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
@@ -103,11 +114,12 @@ func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 		kubeAdapter:         adapter,
 		defaultPodIndex:     -1,
 		defaultPodWarning:   "",
-		focusedPanel:        PanelNamespaces, // Story 3.3: Start with namespace panel focused
-		selectedPodIndex:    -1,              // Story 3.3: No pod selected initially
-		podScrollOffset:     0,               // Story 3.3: No scroll offset initially
-		selectedActionIndex: -1,              // Story 4.1: No action selected initially
-		actionsScrollOffset: 0,               // Story 4.1: No scroll offset initially
+		focusedPanel:        PanelNamespaces,               // Story 3.3: Start with namespace panel focused
+		selectedPodIndex:    -1,                            // Story 3.3: No pod selected initially
+		podScrollOffset:     0,                             // Story 3.3: No scroll offset initially
+		selectedActionIndex: -1,                            // Story 4.1: No action selected initially
+		actionsScrollOffset: 0,                             // Story 4.1: No scroll offset initially
+		executor:            executor.NewExecutor(adapter), // Story 4.2: Initialize executor
 	}
 
 	// Initialize viewMode based on number of contexts
@@ -229,7 +241,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return m, nil
 
+	case execFinishedMsg:
+		// Handle command execution completion (Story 4.2)
+		if msg.err != nil {
+			m.errorMessage = fmt.Sprintf("Command failed: %s", msg.err.Error())
+		}
+		return m, nil
+
 	case tea.KeyMsg:
+		// Clear error message on any key press (Story 4.2)
+		if m.errorMessage != "" {
+			m.errorMessage = ""
+			return m, nil
+		}
+
 		// Handle search mode ESC first (before quit keys)
 		if m.searchMode && msg.Type == tea.KeyEsc {
 			m.deactivateSearch()
@@ -239,6 +264,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle quit keys (but not in search mode where ESC is handled above)
 		if KeyMatches(msg, m.keys.Quit) {
 			return m, tea.Quit
+		}
+
+		// Check for action shortcut key presses (Story 4.2)
+		// Only in namespace view mode and not in search mode
+		if m.viewMode == viewModeNamespaceView && !m.searchMode {
+			keyStr := msg.String()
+			for _, action := range m.actions {
+				if keyStr == action.Shortcut {
+					return m.handleActionExecution(action)
+				}
+			}
 		}
 
 		// Handle context selection mode navigation
@@ -697,6 +733,45 @@ func (m *AppModel) getMatchIndices(namespaceName string) []int {
 	return nil
 }
 
+// handleActionExecution executes an action using tea.ExecProcess (Story 4.2)
+func (m AppModel) handleActionExecution(action config.Action) (tea.Model, tea.Cmd) {
+	// Only handle pod_exec type in Story 4.2
+	if action.Type != "pod_exec" {
+		m.errorMessage = fmt.Sprintf("Action type '%s' not yet implemented", action.Type)
+		return m, nil
+	}
+
+	// Ensure we have a current context and namespace
+	if m.currentContext == nil {
+		m.errorMessage = "No context selected"
+		return m, nil
+	}
+
+	if m.currentNamespace == "" {
+		m.errorMessage = "No namespace selected"
+		return m, nil
+	}
+
+	if len(m.pods) == 0 {
+		m.errorMessage = "No pods available in namespace"
+		return m, nil
+	}
+
+	// Prepare the kubectl exec command using executor
+	// This handles pod pattern matching and context box rendering
+	cmd, err := m.executor.PreparePodExec(action, *m.currentContext, m.currentNamespace, m.pods)
+	if err != nil {
+		m.errorMessage = fmt.Sprintf("Action failed: %s", err.Error())
+		return m, nil
+	}
+
+	// Use tea.ExecProcess to suspend TUI and run kubectl exec
+	// This gives full terminal control to the command
+	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return execFinishedMsg{err: err}
+	})
+}
+
 // View renders the UI based on the current model state
 func (m AppModel) View() string {
 	// If there's an error, display it
@@ -997,7 +1072,22 @@ func (m AppModel) renderSplitLayout() string {
 	mainLayout := lipgloss.JoinHorizontal(lipgloss.Top, namespacePanel, rightSide)
 
 	// Add header at top
-	return lipgloss.JoinVertical(lipgloss.Left, header, mainLayout)
+	fullLayout := lipgloss.JoinVertical(lipgloss.Left, header, mainLayout)
+
+	// Add error message at bottom if present (Story 4.2)
+	if m.errorMessage != "" {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15")).  // White text
+			Background(lipgloss.Color("196")). // Red background
+			Padding(0, 1).
+			Bold(true).
+			Width(m.termWidth)
+
+		errorBar := errorStyle.Render(m.errorMessage)
+		fullLayout = lipgloss.JoinVertical(lipgloss.Left, fullLayout, errorBar)
+	}
+
+	return fullLayout
 }
 
 // renderHeader renders the header bar with context name

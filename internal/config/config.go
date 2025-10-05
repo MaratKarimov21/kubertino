@@ -23,10 +23,12 @@ type Context struct {
 
 // Action represents a configurable action with a shortcut
 type Action struct {
-	Name       string `yaml:"name"`
-	Shortcut   string `yaml:"shortcut"`
-	Type       string `yaml:"type"` // pod_exec, url, local
-	Command    string `yaml:"command,omitempty"`
-	URL        string `yaml:"url,omitempty"`
-	PodPattern string `yaml:"pod_pattern,omitempty"`
+	Name        string `yaml:"name"`
+	Shortcut    string `yaml:"shortcut"`
+	Type        string `yaml:"type"` // pod_exec, url, local
+	Command     string `yaml:"command,omitempty"`
+	URL         string `yaml:"url,omitempty"`
+	PodPattern  string `yaml:"pod_pattern,omitempty"`
+	Destructive bool   `yaml:"destructive,omitempty"` // Requires confirmation
+	Container   string `yaml:"container,omitempty"`   // Target container for multi-container pods
 }

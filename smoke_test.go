@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,6 +24,10 @@ func (m *mockAdapter) GetPods(context, namespace string) ([]k8s.Pod, error) {
 		{Name: "test-pod-1", Status: "Running"},
 		{Name: "test-pod-2", Status: "Pending"},
 	}, nil
+}
+
+func (m *mockAdapter) ExecInPod(context, namespace, pod, container, command string) (*exec.Cmd, error) {
+	return exec.Command("echo", "mock"), nil
 }
 
 func main() {

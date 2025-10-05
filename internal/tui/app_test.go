@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -30,6 +31,14 @@ func (m *mockKubeAdapter) GetPods(context, namespace string) ([]k8s.Pod, error) 
 		return nil, m.err
 	}
 	return m.pods, nil
+}
+
+func (m *mockKubeAdapter) ExecInPod(context, namespace, pod, container, command string) (*exec.Cmd, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	// Return a simple mock command
+	return exec.Command("echo", "mock"), nil
 }
 
 func newMockAdapter() *mockKubeAdapter {
