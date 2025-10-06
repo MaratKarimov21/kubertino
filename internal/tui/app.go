@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"sort"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -103,6 +105,8 @@ type AppModel struct {
 	// Executor and error state (Story 4.2)
 	executor     *executor.Executor
 	errorMessage string // Error message to display in TUI
+	// Favorites state (Story 5.3)
+	favoriteNamespaces []string // Favorite namespaces for current context
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
@@ -200,11 +204,20 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.namespacesError = nil
-		m.namespaces = msg.namespaces
 
-		// After Story 5.1: FavoriteNamespaces moved to Config.Favorites
-		// Sorting by favorites temporarily disabled until favorites parsing implemented
-		// TODO: Implement favorites support from Config.Favorites field
+		// Story 5.3: Get favorites for current context
+		if m.currentContext != nil {
+			favorites, err := config.GetFavorites(m.config, m.currentContext.Name)
+			if err != nil {
+				slog.Warn("failed to get favorites", "context", m.currentContext.Name, "error", err)
+				m.favoriteNamespaces = []string{}
+			} else {
+				m.favoriteNamespaces = favorites
+			}
+		}
+
+		// Story 5.3: Sort namespaces with favorites first
+		m.namespaces = m.sortNamespacesWithFavorites(msg.namespaces, m.favoriteNamespaces)
 
 		return m, nil
 
@@ -304,6 +317,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedNamespaceIndex = 0 // Reset namespace selection
 				m.namespaceViewportStart = 0 // Reset viewport position
 				m.namespaces = nil           // Clear previous namespaces
+				// Story 5.3: Clear favorites (will be loaded with namespaces)
+				m.favoriteNamespaces = nil
 				// Load actions from context (Story 4.1)
 				m.actions = m.currentContext.Actions
 				m.selectedActionIndex = -1
@@ -527,6 +542,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // sortNamespacesWithFavorites sorts namespaces with favorites first
+// Story 5.3: Both favorites and regular namespaces are sorted alphabetically
 func (m AppModel) sortNamespacesWithFavorites(namespaces []string, favorites []string) []string {
 	// Create a set of favorites for quick lookup
 	favSet := make(map[string]bool)
@@ -543,6 +559,10 @@ func (m AppModel) sortNamespacesWithFavorites(namespaces []string, favorites []s
 			nonFavs = append(nonFavs, ns)
 		}
 	}
+
+	// Sort both sections alphabetically (Story 5.3)
+	sort.Strings(favs)
+	sort.Strings(nonFavs)
 
 	// Combine: favorites first, then rest
 	result := make([]string, 0, len(namespaces))
@@ -836,9 +856,11 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 		// Show "no matches" message when search returns empty
 		s += styles.DimStyle.Render("No matches found") + "\n"
 	} else {
-		// After Story 5.1: FavoriteNamespaces moved to Config.Favorites
-		// Favorites display temporarily disabled
-		favSet := make(map[string]bool) // Empty set for now
+		// Story 5.3: Build favorites set for marking
+		favSet := make(map[string]bool)
+		for _, fav := range m.favoriteNamespaces {
+			favSet[fav] = true
+		}
 
 		// Calculate viewport (visible window)
 		// Count exact lines used by UI elements:
@@ -887,6 +909,22 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 			}
 		}
 
+		// Story 5.3: Track if we need to add separator between favorites and regular namespaces
+		needsSeparator := false
+		separatorAdded := false
+
+		// Story 5.3: Determine separator position (after last favorite in visible range)
+		lastFavoriteIndex := -1
+		if !m.searchMode {
+			// Only show separator in normal mode (favorites already sorted first)
+			for i := start; i < end; i++ {
+				if favSet[renderList[i]] {
+					lastFavoriteIndex = i
+					needsSeparator = true
+				}
+			}
+		}
+
 		// Render visible namespaces
 		for i := start; i < end; i++ {
 			ns := renderList[i]
@@ -913,6 +951,13 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 				s += styles.SelectedStyle.Render(renderedName) + "\n"
 			} else {
 				s += renderedName + "\n"
+			}
+
+			// Story 5.3: Add separator after last favorite (only if favorites exist and we're not in search mode)
+			if needsSeparator && !separatorAdded && i == lastFavoriteIndex && lastFavoriteIndex < end-1 {
+				separator := strings.Repeat("─", 30)
+				s += styles.DimStyle.Render(separator) + "\n"
+				separatorAdded = true
 			}
 		}
 

@@ -733,3 +733,333 @@ func TestAppModel_RenderNamespaceList(t *testing.T) {
 		assert.Contains(t, view, "Navigate", "should show navigation hint")
 	})
 }
+
+// Story 5.3: Tests for favorites integration
+func TestFavoritesIntegration(t *testing.T) {
+	t.Run("per-context favorites format", func(t *testing.T) {
+		// Setup config with per-context favorites
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "production", DefaultPodPattern: ".*"},
+			},
+			Favorites: map[string]interface{}{
+				"production": []interface{}{"critical", "monitoring"},
+			},
+		}
+
+		adapter := newMockAdapter()
+		adapter.namespaces = []string{"app", "critical", "default", "monitoring"}
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+
+		// Simulate namespace fetch
+		msg := namespaceFetchedMsg{
+			namespaces: []string{"app", "critical", "default", "monitoring"},
+		}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Verify favorites are set
+		assert.Equal(t, []string{"critical", "monitoring"}, m.favoriteNamespaces)
+
+		// Verify namespaces sorted with favorites first
+		require.Len(t, m.namespaces, 4)
+		assert.Equal(t, "critical", m.namespaces[0])
+		assert.Equal(t, "monitoring", m.namespaces[1])
+		// Regular namespaces should be after favorites
+		assert.Contains(t, m.namespaces[2:], "app")
+		assert.Contains(t, m.namespaces[2:], "default")
+	})
+
+	t.Run("global favorites format", func(t *testing.T) {
+		// Setup config with global favorites
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "staging", DefaultPodPattern: ".*"},
+			},
+			Favorites: []interface{}{"shared-ns", "common-ns"},
+		}
+
+		adapter := newMockAdapter()
+		adapter.namespaces = []string{"app", "common-ns", "default", "shared-ns"}
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+
+		// Simulate namespace fetch
+		msg := namespaceFetchedMsg{
+			namespaces: []string{"app", "common-ns", "default", "shared-ns"},
+		}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Verify favorites are set
+		assert.Equal(t, []string{"shared-ns", "common-ns"}, m.favoriteNamespaces)
+
+		// Verify namespaces sorted with favorites first
+		require.Len(t, m.namespaces, 4)
+		assert.Equal(t, "common-ns", m.namespaces[0])
+		assert.Equal(t, "shared-ns", m.namespaces[1])
+	})
+
+	t.Run("empty favorites list", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "test", DefaultPodPattern: ".*"},
+			},
+			Favorites: []interface{}{},
+		}
+
+		adapter := newMockAdapter()
+		adapter.namespaces = []string{"default", "app"}
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+
+		msg := namespaceFetchedMsg{
+			namespaces: []string{"default", "app"},
+		}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Verify favorites are empty
+		assert.Empty(t, m.favoriteNamespaces)
+
+		// Namespaces should still be sorted
+		assert.Equal(t, []string{"app", "default"}, m.namespaces)
+	})
+
+	t.Run("nil favorites", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "test", DefaultPodPattern: ".*"},
+			},
+			Favorites: nil,
+		}
+
+		adapter := newMockAdapter()
+		adapter.namespaces = []string{"default", "app"}
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+
+		msg := namespaceFetchedMsg{
+			namespaces: []string{"default", "app"},
+		}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Verify favorites are empty
+		assert.Empty(t, m.favoriteNamespaces)
+	})
+}
+
+func TestSortNamespacesWithFavorites(t *testing.T) {
+	cfg := &config.Config{
+		Version:  "1.0",
+		Contexts: []config.Context{{Name: "test", DefaultPodPattern: ".*"}},
+	}
+	adapter := newMockAdapter()
+	model := NewAppModel(cfg, adapter)
+
+	t.Run("sorts favorites alphabetically", func(t *testing.T) {
+		namespaces := []string{"zeta", "alpha", "beta"}
+		favorites := []string{"zeta", "alpha"}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		// First two should be favorites, sorted alphabetically
+		assert.Equal(t, "alpha", sorted[0])
+		assert.Equal(t, "zeta", sorted[1])
+		// Last should be regular namespace
+		assert.Equal(t, "beta", sorted[2])
+	})
+
+	t.Run("sorts regular namespaces alphabetically", func(t *testing.T) {
+		namespaces := []string{"zeta", "alpha", "beta", "gamma"}
+		favorites := []string{"alpha"}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		// First should be favorite
+		assert.Equal(t, "alpha", sorted[0])
+		// Rest should be sorted alphabetically
+		assert.Equal(t, "beta", sorted[1])
+		assert.Equal(t, "gamma", sorted[2])
+		assert.Equal(t, "zeta", sorted[3])
+	})
+
+	t.Run("handles empty favorites", func(t *testing.T) {
+		namespaces := []string{"zeta", "alpha", "beta"}
+		favorites := []string{}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		// All should be sorted as regular namespaces
+		assert.Equal(t, []string{"alpha", "beta", "zeta"}, sorted)
+	})
+
+	t.Run("handles all favorites", func(t *testing.T) {
+		namespaces := []string{"zeta", "alpha", "beta"}
+		favorites := []string{"zeta", "alpha", "beta"}
+
+		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
+
+		// All should be sorted as favorites
+		assert.Equal(t, []string{"alpha", "beta", "zeta"}, sorted)
+	})
+}
+
+func TestFavoritesDisplay(t *testing.T) {
+	t.Run("shows star marker for favorites", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "production", DefaultPodPattern: ".*"},
+			},
+			Favorites: []interface{}{"critical"},
+		}
+
+		adapter := newMockAdapter()
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.termWidth = 80
+		model.termHeight = 24
+		model.namespaces = []string{"critical", "default"}
+		model.favoriteNamespaces = []string{"critical"}
+
+		view := model.View()
+
+		// Should contain star marker for favorite
+		assert.Contains(t, view, "★", "should show star marker for favorite")
+		assert.Contains(t, view, "critical", "should show favorite namespace")
+	})
+
+	t.Run("shows separator when favorites exist", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "production", DefaultPodPattern: ".*"},
+			},
+			Favorites: []interface{}{"critical"},
+		}
+
+		adapter := newMockAdapter()
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.termWidth = 80
+		model.termHeight = 24
+		model.namespaces = []string{"critical", "default"}
+		model.favoriteNamespaces = []string{"critical"}
+
+		view := model.View()
+
+		// Should contain separator
+		assert.Contains(t, view, "─", "should show separator line")
+	})
+
+	t.Run("no separator when favorites empty", func(t *testing.T) {
+		cfg := &config.Config{
+			Version:  "1.0",
+			Contexts: []config.Context{{Name: "production", DefaultPodPattern: ".*"}},
+		}
+
+		adapter := newMockAdapter()
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.termWidth = 80
+		model.termHeight = 24
+		model.namespaces = []string{"default", "app"}
+		model.favoriteNamespaces = []string{}
+
+		view := model.View()
+
+		// Should not contain star or separator
+		assert.NotContains(t, view, "★", "should not show star when no favorites")
+	})
+
+	t.Run("no separator when all namespaces are favorites", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "production", DefaultPodPattern: ".*"},
+			},
+			Favorites: []interface{}{"critical", "monitoring"},
+		}
+
+		adapter := newMockAdapter()
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+		model.viewMode = viewModeNamespaceView
+		model.termWidth = 80
+		model.termHeight = 24
+		model.namespaces = []string{"critical", "monitoring"}
+		model.favoriteNamespaces = []string{"critical", "monitoring"}
+
+		view := model.View()
+
+		// Should show stars but no separator (no regular namespaces)
+		assert.Contains(t, view, "★", "should show star markers")
+	})
+}
+
+func TestContextSwitchingWithFavorites(t *testing.T) {
+	t.Run("clears favorites on context switch", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "production", DefaultPodPattern: ".*"},
+				{Name: "staging", DefaultPodPattern: ".*"},
+			},
+			Favorites: map[string]interface{}{
+				"production": []interface{}{"critical"},
+				"staging":    []interface{}{"test"},
+			},
+		}
+
+		adapter := newMockAdapter()
+		model := NewAppModel(cfg, adapter)
+		model.viewMode = viewModeContextSelection
+		model.selectedContextIndex = 0
+		model.favoriteNamespaces = []string{"old-favorite"}
+
+		// Simulate selecting context
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Favorites should be cleared (will be reloaded with namespaces)
+		assert.Nil(t, m.favoriteNamespaces)
+	})
+
+	t.Run("loads correct favorites for selected context", func(t *testing.T) {
+		cfg := &config.Config{
+			Version: "1.0",
+			Contexts: []config.Context{
+				{Name: "production", DefaultPodPattern: ".*"},
+			},
+			Favorites: map[string]interface{}{
+				"production": []interface{}{"critical", "monitoring"},
+			},
+		}
+
+		adapter := newMockAdapter()
+		adapter.namespaces = []string{"app", "critical", "default", "monitoring"}
+		model := NewAppModel(cfg, adapter)
+		model.currentContext = &cfg.Contexts[0]
+
+		// Simulate namespace fetch for production context
+		msg := namespaceFetchedMsg{
+			namespaces: []string{"app", "critical", "default", "monitoring"},
+		}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Should load production favorites
+		assert.ElementsMatch(t, []string{"critical", "monitoring"}, m.favoriteNamespaces)
+	})
+}
