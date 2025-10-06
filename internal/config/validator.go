@@ -1,9 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
-	"strings"
+	"text/template"
 )
 
 // Validate validates the configuration and returns an error if invalid
@@ -12,12 +13,38 @@ func Validate(cfg *Config) error {
 		return fmt.Errorf("config is nil")
 	}
 
+	if cfg.Version == "" {
+		return fmt.Errorf("version is required")
+	}
+
 	if len(cfg.Contexts) == 0 {
 		return fmt.Errorf("no contexts defined")
 	}
 
+	// Validate favorites format if present
+	if cfg.Favorites != nil {
+		if err := validateFavorites(cfg.Favorites); err != nil {
+			return fmt.Errorf("invalid favorites: %w", err)
+		}
+	}
+
+	// Validate global actions
+	if len(cfg.Actions) > 0 {
+		globalShortcuts := make(map[string]string)
+		for i, action := range cfg.Actions {
+			if err := validateAction(&action, i, "global"); err != nil {
+				return err
+			}
+			if existingAction, exists := globalShortcuts[action.Shortcut]; exists {
+				return fmt.Errorf("global actions: duplicate shortcut '%s' found in actions '%s' and '%s'",
+					action.Shortcut, existingAction, action.Name)
+			}
+			globalShortcuts[action.Shortcut] = action.Name
+		}
+	}
+
 	for i, ctx := range cfg.Contexts {
-		if err := validateContext(&ctx, i); err != nil {
+		if err := validateContext(&ctx, i, cfg.Actions); err != nil {
 			return err
 		}
 	}
@@ -26,29 +53,26 @@ func Validate(cfg *Config) error {
 }
 
 // validateContext validates a single context
-func validateContext(ctx *Context, index int) error {
+func validateContext(ctx *Context, index int, globalActions []Action) error {
 	// Validate required fields
 	if ctx.Name == "" {
 		return fmt.Errorf("context[%d]: name is required", index)
 	}
 
-	if ctx.DefaultPodPattern == "" {
-		return fmt.Errorf("context[%d] (%s): default_pod_pattern is required", index, ctx.Name)
+	// Validate regex patterns if provided
+	if ctx.DefaultPodPattern != "" {
+		if _, err := regexp.Compile(ctx.DefaultPodPattern); err != nil {
+			return fmt.Errorf("context[%d] (%s): invalid default_pod_pattern regex: %w", index, ctx.Name, err)
+		}
 	}
 
-	// Validate regex patterns
-	if _, err := regexp.Compile(ctx.DefaultPodPattern); err != nil {
-		return fmt.Errorf("context[%d] (%s): invalid default_pod_pattern regex: %w", index, ctx.Name, err)
-	}
-
-	// Validate actions
+	// Validate per-context actions
 	shortcuts := make(map[string]string)
 	for j, action := range ctx.Actions {
 		if err := validateAction(&action, j, ctx.Name); err != nil {
 			return err
 		}
-
-		// Check for duplicate shortcuts
+		// Check for duplicate shortcuts within per-context actions
 		if existingAction, exists := shortcuts[action.Shortcut]; exists {
 			return fmt.Errorf("context[%d] (%s): duplicate shortcut '%s' found in actions '%s' and '%s'",
 				index, ctx.Name, action.Shortcut, existingAction, action.Name)
@@ -75,38 +99,14 @@ func validateAction(action *Action, index int, contextName string) error {
 			contextName, index, action.Name, action.Shortcut)
 	}
 
-	if action.Type == "" {
-		return fmt.Errorf("context (%s), action[%d] (%s): type is required", contextName, index, action.Name)
+	if action.Command == "" {
+		return fmt.Errorf("context (%s), action[%d] (%s): command is required", contextName, index, action.Name)
 	}
 
-	// Validate action type
-	validTypes := map[string]bool{
-		"pod_exec": true,
-		"url":      true,
-		"local":    true,
-	}
-	if !validTypes[action.Type] {
-		return fmt.Errorf("context (%s), action[%d] (%s): invalid type '%s', must be one of: pod_exec, url, local",
-			contextName, index, action.Name, action.Type)
-	}
-
-	// Validate type-specific fields
-	switch action.Type {
-	case "pod_exec":
-		if action.Command == "" {
-			return fmt.Errorf("context (%s), action[%d] (%s): pod_exec action requires command field",
-				contextName, index, action.Name)
-		}
-		// Check for command injection characters
-		if strings.ContainsAny(action.Command, ";|&") {
-			return fmt.Errorf("context (%s), action[%d] (%s): command contains unsafe characters (;|&)",
-				contextName, index, action.Name)
-		}
-	case "url":
-		if action.URL == "" {
-			return fmt.Errorf("context (%s), action[%d] (%s): url action requires url field",
-				contextName, index, action.Name)
-		}
+	// Validate command template syntax
+	if err := validateCommandTemplate(action.Command); err != nil {
+		return fmt.Errorf("context (%s), action[%d] (%s): invalid command template: %w",
+			contextName, index, action.Name, err)
 	}
 
 	// Validate pod pattern if provided
@@ -118,4 +118,40 @@ func validateAction(action *Action, index int, contextName string) error {
 	}
 
 	return nil
+}
+
+// validateCommandTemplate validates the Go template syntax in a command string
+func validateCommandTemplate(command string) error {
+	// Create a template with dummy data to validate syntax
+	tmpl, err := template.New("command").Parse(command)
+	if err != nil {
+		return fmt.Errorf("template parsing failed: %w", err)
+	}
+
+	// Try to execute the template with dummy variables to catch undefined function errors
+	// This validates that {{variable}} syntax works correctly
+	data := map[string]string{
+		"context":   "test-context",
+		"namespace": "test-namespace",
+		"pod":       "test-pod",
+	}
+
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, data)
+	if err != nil {
+		return fmt.Errorf("template execution failed: %w", err)
+	}
+
+	return nil
+}
+
+// validateFavorites validates the favorites format
+func validateFavorites(favorites interface{}) error {
+	if favorites == nil {
+		return nil
+	}
+
+	// Try to parse favorites using the parser function
+	_, err := parseFavorites(favorites)
+	return err
 }
