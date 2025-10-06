@@ -87,7 +87,7 @@ graph TD
 **Command Pattern:** Actions encapsulated as executable commands with templating
 - Rationale: Flexible action system, simple universal interface
 
-**Template Pattern:** Action commands use Go template syntax for variable substitution ({{context}}, {{namespace}}, {{pod}})
+**Template Pattern:** Action commands use Go template syntax for variable substitution ({{.context}}, {{.namespace}}, {{.pod}})
 - Rationale: Maximum flexibility allowing users to define any command structure, eliminates need for action type distinction, supports kubectl exec, URLs, local scripts with single unified approach
 
 ## Tech Stack
@@ -145,7 +145,7 @@ type Context struct {
 type Action struct {
     Name        string `yaml:"name"`
     Shortcut    string `yaml:"shortcut"`
-    Command     string `yaml:"command"`                   // Template with {{context}}, {{namespace}}, {{pod}}
+    Command     string `yaml:"command"`                   // Template with {{.context}}, {{.namespace}}, {{.pod}}
     PodPattern  string `yaml:"pod_pattern,omitempty"`     // Optional pod regex override
     Container   string `yaml:"container,omitempty"`       // Optional container name for multi-container pods
     Destructive bool   `yaml:"destructive,omitempty"`     // Requires confirmation (optional)
@@ -341,9 +341,9 @@ func (k *KubeAdapter) GetNamespaces(context string) ([]string, error) {
 - `Execute(action Action, context Context, namespace, pod string) error` - Parse template, substitute variables, execute command
 
 **Template Variables:**
-- `{{context}}` - Current Kubernetes context name
-- `{{namespace}}` - Selected namespace
-- `{{pod}}` - Matched pod name (using pod_pattern regex)
+- `{{.context}}` - Current Kubernetes context name
+- `{{.namespace}}` - Selected namespace
+- `{{.pod}}` - Matched pod name (using pod_pattern regex)
 
 **Dependencies:**
 - text/template for Go template parsing
@@ -395,9 +395,9 @@ func (e *Executor) Execute(action Action, context Context, namespace, pod string
 
 | Template Command | Substituted Command (context=prod, ns=app, pod=web-123) |
 |-----------------|----------------------------------------------------------|
-| `kubectl logs -n {{namespace}} {{pod}}` | `kubectl logs -n app web-123` |
-| `open https://dash/{{context}}/{{namespace}}` | `open https://dash/prod/app` |
-| `kubectl exec -n {{namespace}} {{pod}} -it -- bash` | `kubectl exec -n app web-123 -it -- bash` |
+| `kubectl logs -n {{.namespace}} {{.pod}}` | `kubectl logs -n app web-123` |
+| `open https://dash/{{.context}}/{{.namespace}}` | `open https://dash/prod/app` |
+| `kubectl exec -n {{.namespace}} {{.pod}} -it -- bash` | `kubectl exec -n app web-123 -it -- bash` |
 
 ## Core Workflows
 

@@ -39,7 +39,7 @@ Kubertino takes a lazy loading approach - only fetching data for the selected na
 
 **FR3:** Execute configurable actions on selected namespace using keyboard shortcuts
 
-**FR4:** Support universal action template system with variable substitution ({{context}}, {{namespace}}, {{pod}}) for flexible command aliasing, enabling users to execute any command (kubectl exec, open URLs, local scripts) with dynamic context-aware parameters
+**FR4:** Support universal action template system with variable substitution ({{.context}}, {{.namespace}}, {{.pod}}) for flexible command aliasing, enabling users to execute any command (kubectl exec, open URLs, local scripts) with dynamic context-aware parameters
 
 **FR5:** Support global actions (available for all contexts) and per-context actions (override/extend global actions)
 
@@ -191,15 +191,15 @@ kubeconfig: ~/.kube/config
 actions:
   - name: "View Logs"
     shortcut: "l"
-    command: "kubectl logs -n {{namespace}} {{pod}} -f --tail=100"
+    command: "kubectl logs -n {{.namespace}} {{.pod}} -f --tail=100"
 
   - name: "Open Dashboard"
     shortcut: "d"
-    command: "open https://dashboard.example.com/{{context}}/{{namespace}}"
+    command: "open https://dashboard.example.com/{{.context}}/{{.namespace}}"
 
   - name: "Port Forward"
     shortcut: "p"
-    command: "kubectl port-forward -n {{namespace}} {{pod}} 3000:3000"
+    command: "kubectl port-forward -n {{.namespace}} {{.pod}} 3000:3000"
 
 # Favorites - Format A: Per-context map
 favorites:
@@ -223,12 +223,12 @@ contexts:
     actions:
       - name: "Rails Console"
         shortcut: "c"
-        command: "kubectl exec -n {{namespace}} {{pod}} -it -- bundle exec rails console"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- bundle exec rails console"
         pod_pattern: "rails-web-.*"
 
       - name: "DB Console"
         shortcut: "b"
-        command: "kubectl exec -n {{namespace}} {{pod}} -it -- bundle exec rails dbconsole"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- bundle exec rails dbconsole"
         pod_pattern: "rails-web-.*"
 
   - name: staging
@@ -236,14 +236,14 @@ contexts:
     actions:
       - name: "Bash Shell"
         shortcut: "s"
-        command: "kubectl exec -n {{namespace}} {{pod}} -it -- /bin/bash"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/bash"
 ```
 
 **Key Configuration Features:**
 
 - **Global Actions:** Defined at top-level, available across all contexts
 - **Per-Context Actions:** Defined within context, extend or override global actions
-- **Template Variables:** `{{context}}`, `{{namespace}}`, `{{pod}}` substituted at runtime
+- **Template Variables:** `{{.context}}`, `{{.namespace}}`, `{{.pod}}` substituted at runtime
 - **Dual Favorites Format:** Supports both per-context map and global list
 - **Pod Pattern Matching:** Optional regex for selecting specific pods
 - **Flexible Commands:** Any shell command (kubectl, open, scripts, etc.)
@@ -523,43 +523,37 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 6. All errors return user to TUI (don't exit application)
 7. Errors logged to file (~/.kubertino/logs/errors.log) for debugging
 
-## Epic 5: Extended Actions & Polish
+## Epic 5: Action System Simplification
 
-**Goal:** Implement URL and local action types, add favorite namespace support, and refine UI/UX based on MVP usage. This epic completes the MVP feature set.
+**Goal:** Refactor action system from type-based (pod_exec, url, local) to universal template-based approach, simplifying architecture and improving flexibility.
 
-### Story 5.1: URL Action Type
+**Note:** This epic was added after Epic 4 to address unnecessary complexity in the multi-typed action system. Stories 5.1-5.3 refactor the config model and executor to use Go templates with variable substitution, replacing the type-based approach.
 
-**As a** user,
-**I want** to open URLs with namespace/pod variable substitution,
-**so that** I can quickly access web interfaces related to my namespace.
+### Story 5.1: Refactor Config Model
 
-**Acceptance Criteria:**
+**Status:** ✅ Complete
 
-1. URL action type supported in configuration
-2. Variables {{namespace}} and {{pod}} substituted in URL template
-3. URL opened in default browser automatically
-4. URL also printed to console for reference
-5. Error shown if browser launch fails
-6. Multiple URL actions can be configured per context
-7. URL validation performed during config load
+Configuration model refactored to support global/per-context actions and dual-format favorites (per-context map or global list).
 
-### Story 5.2: Local Action Type
+### Story 5.2: Implement Template-Based Action Execution
 
-**As a** user,
-**I want** to execute commands on my local machine,
-**so that** I can run kubectl commands or scripts with context.
+**Status:** ✅ Complete
 
-**Acceptance Criteria:**
+Action commands now use Go template syntax with {{.context}}, {{.namespace}}, {{.pod}} variables, eliminating the need for separate action types.
 
-1. Local action type supported in configuration
-2. Commands executed in local shell with kubectl context set
-3. Variables {{namespace}} and {{pod}} available in command template
-4. Command output shown in terminal (TUI minimized)
-5. Exit code captured and displayed
-6. Error handling for command not found or execution failure
-7. Environment variables preserved from parent shell
+### Story 5.3: Implement Favorites Dual-Format Support
 
-### Story 5.3: Favorite Namespaces Display
+**Status:** ✅ Complete
+
+Favorites configuration supports both per-context map and global list formats with proper TUI integration.
+
+## Epic 6: Extended Features & Polish
+
+**Goal:** Add favorite namespace support, keyboard shortcuts help, configuration reload, and performance optimization to complete the MVP feature set.
+
+**Note:** Stories 5.1 (URL Action Type) and 5.2 (Local Action Type) from original Epic 5 were removed and replaced by Epic 5's universal template-based action system. URL and local command execution is now handled through template commands.
+
+### Story 6.1: Favorite Namespaces Display
 
 **As a** user,
 **I want** favorite namespaces displayed at top of the list,
@@ -575,7 +569,7 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 6. Empty favorites list handled gracefully (no separator shown)
 7. Favorites update when configuration reloaded
 
-### Story 5.4: Keyboard Shortcuts Help
+### Story 6.2: Keyboard Shortcuts Help
 
 **As a** user,
 **I want** to view all keyboard shortcuts,
@@ -590,7 +584,7 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 5. Global shortcuts listed separately from action shortcuts
 6. Help accessible from any screen
 
-### Story 5.5: Configuration Reload
+### Story 6.3: Configuration Reload
 
 **As a** user,
 **I want** to reload configuration without restarting,
@@ -606,7 +600,7 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 6. Current context and namespace selection preserved if still valid
 7. Actions list updated to reflect new configuration
 
-### Story 5.6: Performance Optimization
+### Story 6.4: Performance Optimization
 
 **As a** developer,
 **I want** kubertino to meet NFR performance targets,

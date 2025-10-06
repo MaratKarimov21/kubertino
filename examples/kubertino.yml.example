@@ -3,109 +3,107 @@
 
 version: "1.0"
 
+# Optional: Override default kubeconfig path
+kubeconfig: ~/.kube/config
+
+# Global actions (available for all contexts)
+# These actions are available in every context and can be overridden by per-context actions
+actions:
+  - name: "View Logs"
+    shortcut: "l"
+    command: "kubectl logs -n {{.namespace}} {{.pod}} -f --tail=100"
+
+  - name: "Port Forward"
+    shortcut: "p"
+    command: "kubectl port-forward -n {{.namespace}} {{.pod}} 8080:8080"
+
+  - name: "Describe Pod"
+    shortcut: "i"
+    command: "kubectl describe pod -n {{.namespace}} {{.pod}}"
+
+# Favorite namespaces - Format A: Per-context map
+# Favorites are displayed at the top of the namespace list
+favorites:
+  production:
+    - default
+    - api
+    - workers
+    - monitoring
+  staging:
+    - default
+    - staging-api
+  minikube:
+    - default
+    - dev
+
+# Alternative: Global favorites list (uncomment to use instead of per-context)
+# favorites:
+#   - my-namespace
+#   - another-namespace
+
 contexts:
   # Production context
   - name: production
-    # Path to kubeconfig file (defaults to ~/.kube/config if not specified)
-    kubeconfig: ~/.kube/config
-
-    # Cluster dashboard URL (optional, used for URL actions)
-    cluster_url: https://k8s.prod.example.com
-
     # Default regex pattern for matching pods
     # This determines which pod is selected when an action doesn't specify pod_pattern
     default_pod_pattern: "^api-.*"
 
-    # List of namespaces to show at the top of the namespace list
-    favorite_namespaces:
-      - default
-      - api
-      - workers
-      - monitoring
-
-    # Available actions with keyboard shortcuts
+    # Per-context actions (optional, extend/override global actions)
     actions:
-      # pod_exec action: Execute a command in a pod
-      - name: Console
-        shortcut: c
-        type: pod_exec
-        command: /bin/sh
-        # Optional: Override default_pod_pattern for this action
+      - name: "Rails Console"
+        shortcut: "c"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- bundle exec rails console"
         pod_pattern: "^api-.*"
 
-      - name: Bash
-        shortcut: b
-        type: pod_exec
-        command: /bin/bash
+      - name: "Bash Shell"
+        shortcut: "b"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/bash"
         pod_pattern: "^api-.*"
 
-      - name: Rails Console
-        shortcut: r
-        type: pod_exec
-        command: bundle exec rails console
-        pod_pattern: "^api-.*"
+      - name: "Grafana Dashboard"
+        shortcut: "g"
+        command: "open https://grafana.example.com/d/pod-metrics?var-pod={{.pod}}&var-namespace={{.namespace}}"
 
-      - name: Logs
-        shortcut: l
-        type: pod_exec
-        command: tail -f /var/log/app.log
-
-      # url action: Open a URL in browser
-      - name: Grafana Dashboard
-        shortcut: g
-        type: url
-        url: https://grafana.example.com/d/pod-metrics?var-pod={{.Pod}}
-
-      - name: Kibana Logs
-        shortcut: k
-        type: url
-        url: https://kibana.example.com/app/discover#/?_g=(filters:!((pod:'{{.Pod}}')))
-
-      # local action: Execute a local command
-      - name: Port Forward
-        shortcut: p
-        type: local
-        command: kubectl port-forward {{.Pod}} 8080:8080
+      - name: "Kibana Logs"
+        shortcut: "k"
+        command: "open https://kibana.example.com/app/discover#/?_g=(filters:!((pod:'{{.pod}}')))"
 
   # Staging context
   - name: staging
-    kubeconfig: ~/.kube/config
-    cluster_url: https://k8s.staging.example.com
     default_pod_pattern: "^web-.*"
-    favorite_namespaces:
-      - default
-      - staging-api
     actions:
-      - name: Shell
-        shortcut: s
-        type: pod_exec
-        command: /bin/sh
+      - name: "Shell"
+        shortcut: "s"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/sh"
 
-      - name: Debug
-        shortcut: d
-        type: pod_exec
-        command: /bin/bash -l
+      - name: "Debug Shell"
+        shortcut: "d"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/bash -l"
+
+      - name: "Staging Dashboard"
+        shortcut: "g"
+        command: "open https://dashboard.staging.example.com/{{.context}}/{{.namespace}}"
 
   # Development context (local minikube/kind)
   - name: minikube
-    kubeconfig: ~/.kube/config
     default_pod_pattern: ".*"
-    favorite_namespaces:
-      - default
-      - dev
     actions:
-      - name: Shell
-        shortcut: s
-        type: pod_exec
-        command: /bin/sh
+      - name: "Shell"
+        shortcut: "s"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/sh"
 
-      - name: Logs
-        shortcut: l
-        type: local
-        command: kubectl logs -f {{.Pod}}
+      - name: "Local Logs"
+        shortcut: "v"
+        command: "kubectl logs -n {{.namespace}} {{.pod}} -f"
 
-# Template Variables Available in Actions:
-# {{.Context}}    - Current Kubernetes context name
-# {{.Namespace}}  - Selected namespace
-# {{.Pod}}        - Selected pod name
-# {{.ClusterURL}} - Cluster URL from context configuration
+# Template Variables Available in Commands:
+# {{.context}}    - Current Kubernetes context name
+# {{.namespace}}  - Selected namespace
+# {{.pod}}        - Selected pod name (matched by pod_pattern or default_pod_pattern)
+#
+# Examples:
+# - kubectl exec: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/bash"
+# - kubectl logs: "kubectl logs -n {{.namespace}} {{.pod}} -f --tail=100"
+# - Open URL: "open https://dashboard.example.com/{{.context}}/{{.namespace}}"
+# - Port forward: "kubectl port-forward -n {{.namespace}} {{.pod}} 3000:3000"
+# - Local script: "./scripts/debug.sh {{.context}} {{.namespace}} {{.pod}}"

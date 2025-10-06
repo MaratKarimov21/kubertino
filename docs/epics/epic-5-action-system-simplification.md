@@ -30,13 +30,13 @@
 ## Story 5.2: Implement Template-Based Action Execution
 
 **As a** user,
-**I want** action commands to support {{context}}, {{namespace}}, {{pod}} variables,
+**I want** action commands to support {{.context}}, {{.namespace}}, {{.pod}} variables,
 **so that** I can create flexible command aliases.
 
 **Acceptance Criteria:**
 
 1. Action.Command parsed as Go template
-2. Variables {{context}}, {{namespace}}, {{pod}} substituted from current state
+2. Variables {{.context}}, {{.namespace}}, {{.pod}} substituted from current state
 3. Invalid templates detected during config validation
 4. Template parsing errors shown with helpful messages
 5. Executor refactored to remove Type-based logic
@@ -86,17 +86,6 @@
 
 ## Story 5.5: Create Migration Guide
 
-**As a** user upgrading from Epic 4 config,
-**I want** clear migration instructions,
-**so that** I can update my configuration without breaking my workflow.
+**Status:** ⏸️ Deferred (Out of Scope)
 
-**Acceptance Criteria:**
-
-1. Migration guide document created (docs/migration/epic4-to-epic5.md)
-2. Before/after config examples provided
-3. Breaking changes clearly listed
-4. Step-by-step migration instructions
-5. Common pitfalls and troubleshooting section
-6. Optional: Validation script to check old config format
-7. README updated with link to migration guide
-8. Examples cover both global and per-context action configurations
+**Note:** Migration guide creation has been deferred as users can reference the updated documentation (PRD configuration example, architecture.md) and examples directory for migration guidance. The breaking changes are documented in architecture.md "Key Changes from Previous Version" section.

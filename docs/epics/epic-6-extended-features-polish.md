@@ -2,7 +2,7 @@
 
 **Goal:** Add favorite namespace support, keyboard shortcuts help, configuration reload, and performance optimization to complete the MVP feature set.
 
-**Note:** Stories 5.1 (URL Action Type) and 5.2 (Local Action Type) were removed and replaced by Epic 5's universal template-based action system. URL and local command execution is now handled through template commands (e.g., `command: "open https://..."` or `command: "kubectl get pods -n {{namespace}}"`).
+**Note:** Stories 5.1 (URL Action Type) and 5.2 (Local Action Type) were removed and replaced by Epic 5's universal template-based action system. URL and local command execution is now handled through template commands (e.g., `command: "open https://..."` or `command: "kubectl get pods -n {{.namespace}}"`).
 
 ---
 
