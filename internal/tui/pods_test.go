@@ -150,10 +150,9 @@ func TestGetPodStatusStyle(t *testing.T) {
 
 func TestPodsFetchedMsg_Success(t *testing.T) {
 	ctx := &config.Context{
-		Name:               "test-context",
-		DefaultPodPattern:  ".*",
-		FavoriteNamespaces: []string{"default"},
-		Actions:            []config.Action{},
+		Name:              "test-context",
+		DefaultPodPattern: ".*",
+		Actions:           []config.Action{},
 	}
 
 	model := AppModel{
@@ -186,10 +185,9 @@ func TestPodsFetchedMsg_Success(t *testing.T) {
 
 func TestPodsFetchedMsg_Error(t *testing.T) {
 	ctx := &config.Context{
-		Name:               "test-context",
-		DefaultPodPattern:  ".*",
-		FavoriteNamespaces: []string{"default"},
-		Actions:            []config.Action{},
+		Name:              "test-context",
+		DefaultPodPattern: ".*",
+		Actions:           []config.Action{},
 	}
 
 	model := AppModel{
@@ -221,10 +219,9 @@ func TestPodsFetchedMsg_Error(t *testing.T) {
 func TestFetchPodsCmd(t *testing.T) {
 	// This test verifies the fetchPodsCmd function structure
 	ctx := &config.Context{
-		Name:               "test-context",
-		DefaultPodPattern:  ".*",
-		FavoriteNamespaces: []string{"default"},
-		Actions:            []config.Action{},
+		Name:              "test-context",
+		DefaultPodPattern: ".*",
+		Actions:           []config.Action{},
 	}
 
 	model := AppModel{
@@ -240,10 +237,9 @@ func TestNamespaceSelection_TriggersPodFetch(t *testing.T) {
 	// This test verifies that the pod fetching workflow is correctly implemented
 	// We test the message handling directly rather than simulating key presses
 	ctx := &config.Context{
-		Name:               "test-context",
-		DefaultPodPattern:  ".*",
-		FavoriteNamespaces: []string{"default", "kube-system"},
-		Actions:            []config.Action{},
+		Name:              "test-context",
+		DefaultPodPattern: ".*",
+		Actions:           []config.Action{},
 	}
 
 	adapter := newMockAdapter()
@@ -277,10 +273,9 @@ func TestNamespaceSelection_TriggersPodFetch(t *testing.T) {
 func TestSearchModeNamespaceSelection_TriggersPodFetch(t *testing.T) {
 	// Test that pod fetching works correctly after namespace selection in search mode
 	ctx := &config.Context{
-		Name:               "test-context",
-		DefaultPodPattern:  ".*",
-		FavoriteNamespaces: []string{"default"},
-		Actions:            []config.Action{},
+		Name:              "test-context",
+		DefaultPodPattern: ".*",
+		Actions:           []config.Action{},
 	}
 
 	adapter := newMockAdapter()

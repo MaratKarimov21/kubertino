@@ -81,10 +81,8 @@ func TestRenderSplitLayout(t *testing.T) {
 	cfg := &config.Config{
 		Contexts: []config.Context{
 			{
-				Name:               "test-context",
-				Kubeconfig:         "~/.kube/config",
-				DefaultPodPattern:  ".*",
-				FavoriteNamespaces: []string{"default", "kube-system"},
+				Name:              "test-context",
+				DefaultPodPattern: ".*",
 			},
 		},
 	}
@@ -347,8 +345,7 @@ func TestRenderNamespacePanel(t *testing.T) {
 	cfg := &config.Config{
 		Contexts: []config.Context{
 			{
-				Name:               "test",
-				FavoriteNamespaces: []string{"default"},
+				Name: "test",
 			},
 		},
 	}
@@ -438,8 +435,7 @@ func TestRenderNamespacePanel_LongListInSplitLayout(t *testing.T) {
 	cfg := &config.Config{
 		Contexts: []config.Context{
 			{
-				Name:               "test-context",
-				FavoriteNamespaces: []string{"production"},
+				Name: "test-context",
 			},
 		},
 	}

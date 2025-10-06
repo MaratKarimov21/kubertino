@@ -1,10 +1,13 @@
 package executor
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"text/template"
 
 	"github.com/maratkarimov/kubertino/internal/config"
 	"github.com/maratkarimov/kubertino/internal/k8s"
@@ -118,4 +121,99 @@ func matchPod(pods []k8s.Pod, pattern string) (*k8s.Pod, error) {
 	}
 
 	return &matches[0], nil
+}
+
+// ExecuteLocal executes a local command action with template variable substitution
+func (e *Executor) ExecuteLocal(action config.Action, context config.Context, namespace string, pods []k8s.Pod, kubeconfigPath string) error {
+	// 1. Parse command template
+	tmpl, err := template.New("action").Parse(action.Command)
+	if err != nil {
+		return fmt.Errorf("invalid command template: %w", err)
+	}
+
+	// 2. Match pod using pattern
+	pattern := getPodPattern(action, context)
+	pod, err := matchPod(pods, pattern)
+	if err != nil {
+		return err
+	}
+
+	// 3. Substitute template variables
+	data := map[string]string{
+		"context":   context.Name,
+		"namespace": namespace,
+		"pod":       pod.Name,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("template execution failed: %w", err)
+	}
+
+	command := buf.String()
+
+	// 4. Show context box
+	fmt.Println(renderContextBox(context.Name, namespace, pod.Name, action.Name))
+
+	// 5. Execute command with shell
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = os.Environ() // Preserve parent environment
+	if kubeconfigPath != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("command execution failed: %w", err)
+	}
+
+	return nil
+}
+
+// PrepareLocal prepares a local command without executing it (for TUI integration)
+// Returns the command ready to be executed by tea.ExecProcess
+func (e *Executor) PrepareLocal(action config.Action, context config.Context, namespace string, pods []k8s.Pod, kubeconfigPath string) (*exec.Cmd, error) {
+	// 1. Parse command template
+	tmpl, err := template.New("action").Parse(action.Command)
+	if err != nil {
+		return nil, fmt.Errorf("invalid command template: %w", err)
+	}
+
+	// 2. Match pod using pattern
+	pattern := getPodPattern(action, context)
+	pod, err := matchPod(pods, pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Substitute template variables
+	data := map[string]string{
+		"context":   context.Name,
+		"namespace": namespace,
+		"pod":       pod.Name,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return nil, fmt.Errorf("template execution failed: %w", err)
+	}
+
+	command := buf.String()
+
+	// 4. Render context box (shows before TUI suspends)
+	fmt.Println(renderContextBox(context.Name, namespace, pod.Name, action.Name))
+
+	// 5. Build command with shell
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Env = os.Environ() // Preserve parent environment
+	if kubeconfigPath != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("KUBECONFIG=%s", kubeconfigPath))
+	}
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd, nil
 }

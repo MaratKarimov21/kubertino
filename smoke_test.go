@@ -35,14 +35,12 @@ func main() {
 		Version: "1.0",
 		Contexts: []config.Context{
 			{
-				Name:               "context1",
-				DefaultPodPattern:  ".*",
-				FavoriteNamespaces: []string{"default", "api", "monitoring"},
+				Name:              "context1",
+				DefaultPodPattern: ".*",
 			},
 			{
-				Name:               "context2",
-				DefaultPodPattern:  ".*",
-				FavoriteNamespaces: []string{"default"},
+				Name:              "context2",
+				DefaultPodPattern: ".*",
 			},
 		},
 	}

@@ -202,10 +202,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.namespacesError = nil
 		m.namespaces = msg.namespaces
 
-		// Sort namespaces: favorites first
-		if m.currentContext != nil {
-			m.namespaces = m.sortNamespacesWithFavorites(m.namespaces, m.currentContext.FavoriteNamespaces)
-		}
+		// After Story 5.1: FavoriteNamespaces moved to Config.Favorites
+		// Sorting by favorites temporarily disabled until favorites parsing implemented
+		// TODO: Implement favorites support from Config.Favorites field
 
 		return m, nil
 
@@ -664,46 +663,14 @@ func (m *AppModel) adjustActionsScrollOffset() {
 
 // groupActionsByType groups actions by their type (Story 4.1)
 // Returns a map of type name to actions, preserving order
+// Note: After Story 5.1, Action.Type removed - this returns single group
 func (m AppModel) groupActionsByType() map[string][]config.Action {
-	// Use a slice to maintain insertion order
-	type group struct {
-		typeName string
-		actions  []config.Action
-	}
-
-	seen := make(map[string]int) // type -> index in groups slice
-	var groups []group
-
-	for _, action := range m.actions {
-		typeName := action.Type
-		switch typeName {
-		case "pod_exec":
-			typeName = "Pod"
-		case "url":
-			typeName = "URL"
-		case "local":
-			typeName = "Local"
-		}
-
-		if idx, exists := seen[typeName]; exists {
-			// Add to existing group
-			groups[idx].actions = append(groups[idx].actions, action)
-		} else {
-			// Create new group
-			seen[typeName] = len(groups)
-			groups = append(groups, group{
-				typeName: typeName,
-				actions:  []config.Action{action},
-			})
-		}
-	}
-
-	// Convert to map for return
+	// After Story 5.1: Action.Type field removed, all actions template-based
+	// Return single group "Actions" for now
 	result := make(map[string][]config.Action)
-	for _, g := range groups {
-		result[g.typeName] = g.actions
+	if len(m.actions) > 0 {
+		result["Actions"] = m.actions
 	}
-
 	return result
 }
 
@@ -733,13 +700,11 @@ func (m *AppModel) getMatchIndices(namespaceName string) []int {
 	return nil
 }
 
-// handleActionExecution executes an action using tea.ExecProcess (Story 4.2)
+// handleActionExecution executes an action using tea.ExecProcess (Story 4.2, updated Story 5.1)
 func (m AppModel) handleActionExecution(action config.Action) (tea.Model, tea.Cmd) {
-	// Only handle pod_exec type in Story 4.2
-	if action.Type != "pod_exec" {
-		m.errorMessage = fmt.Sprintf("Action type '%s' not yet implemented", action.Type)
-		return m, nil
-	}
+	// After Story 5.1: Action.Type removed, now template-based commands
+	// Detect action type by analyzing Command template for kubectl exec pattern
+	// For now, only handle pod_exec-style commands (Story 5.2 adds local support)
 
 	// Ensure we have a current context and namespace
 	if m.currentContext == nil {
@@ -871,13 +836,9 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 		// Show "no matches" message when search returns empty
 		s += styles.DimStyle.Render("No matches found") + "\n"
 	} else {
-		// Create favorite set for lookup
-		favSet := make(map[string]bool)
-		if m.currentContext != nil {
-			for _, fav := range m.currentContext.FavoriteNamespaces {
-				favSet[fav] = true
-			}
-		}
+		// After Story 5.1: FavoriteNamespaces moved to Config.Favorites
+		// Favorites display temporarily disabled
+		favSet := make(map[string]bool) // Empty set for now
 
 		// Calculate viewport (visible window)
 		// Count exact lines used by UI elements:
@@ -1026,11 +987,9 @@ func (m AppModel) renderContextList() string {
 			prefix = "> "
 		}
 
-		// Build namespace count suffix
+		// After Story 5.1: FavoriteNamespaces moved to Config.Favorites
+		// Namespace count display temporarily disabled
 		namespaceCount := ""
-		if len(ctx.FavoriteNamespaces) > 0 {
-			namespaceCount = styles.DimStyle.Render(fmt.Sprintf(" (%d namespaces)", len(ctx.FavoriteNamespaces)))
-		}
 
 		// Render context line with appropriate styling
 		if i == m.selectedContextIndex {
@@ -1276,59 +1235,32 @@ func (m AppModel) renderActionsPanel(width, height int) string {
 			visibleHeight = 5 // Minimum visible items
 		}
 
-		// Group actions by type
-		grouped := m.groupActionsByType()
-		hasMultipleTypes := len(grouped) > 1
-
+		// After Story 5.1: Action.Type removed, no grouping needed
+		// Render all actions in single list
 		var actionLines []string
-		displayIndex := 0 // Tracks position across all actions (for selection)
 
-		// Render actions with grouping
-		for _, action := range m.actions {
-			// Determine type name for grouping
-			typeName := action.Type
-			switch typeName {
-			case "pod_exec":
-				typeName = "Pod"
-			case "url":
-				typeName = "URL"
-			case "local":
-				typeName = "Local"
+		// Calculate visible range
+		visibleStart := m.actionsScrollOffset
+		visibleEnd := m.actionsScrollOffset + visibleHeight
+		if visibleEnd > len(m.actions) {
+			visibleEnd = len(m.actions)
+		}
+
+		// Render visible actions
+		for i := visibleStart; i < visibleEnd; i++ {
+			action := m.actions[i]
+			shortcut := styles.ShortcutStyle.Render(fmt.Sprintf("[%s]", action.Shortcut))
+
+			var line string
+			if i == m.selectedActionIndex {
+				actionName := styles.SelectedActionStyle.Render(action.Name)
+				line = fmt.Sprintf("%s %s", shortcut, actionName)
+			} else {
+				actionName := styles.ActionStyle.Render(action.Name)
+				line = fmt.Sprintf("%s %s", shortcut, actionName)
 			}
 
-			// Add group header if needed (only once per group, only if multiple types)
-			if hasMultipleTypes && displayIndex == 0 {
-				// First action - always show header
-				header := fmt.Sprintf("— %s Actions —", typeName)
-				actionLines = append(actionLines, styles.GroupHeaderStyle.Render(header))
-			} else if hasMultipleTypes && displayIndex > 0 {
-				// Check if this is the first action of a new type
-				prevAction := m.actions[displayIndex-1]
-				if prevAction.Type != action.Type {
-					header := fmt.Sprintf("— %s Actions —", typeName)
-					actionLines = append(actionLines, styles.GroupHeaderStyle.Render(header))
-				}
-			}
-
-			// Check if within visible window
-			if displayIndex >= m.actionsScrollOffset &&
-				displayIndex < m.actionsScrollOffset+visibleHeight {
-
-				shortcut := styles.ShortcutStyle.Render(fmt.Sprintf("[%s]", action.Shortcut))
-
-				var line string
-				if displayIndex == m.selectedActionIndex {
-					actionName := styles.SelectedActionStyle.Render(action.Name)
-					line = fmt.Sprintf("%s %s", shortcut, actionName)
-				} else {
-					actionName := styles.ActionStyle.Render(action.Name)
-					line = fmt.Sprintf("%s %s", shortcut, actionName)
-				}
-
-				actionLines = append(actionLines, line)
-			}
-
-			displayIndex++
+			actionLines = append(actionLines, line)
 		}
 
 		content = lipgloss.JoinVertical(lipgloss.Left, actionLines...)

@@ -24,7 +24,7 @@ func TestFocusCycling_Tab(t *testing.T) {
 			name:                "Tab from namespaces to pods with pods available",
 			initialFocus:        PanelNamespaces,
 			pods:                []k8s.Pod{{Name: "test-pod", Status: "Running"}},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelPods,
 			expectedPodIndex:    0,  // Should auto-select first pod
 			expectedActionIndex: -1, // No change
@@ -33,7 +33,7 @@ func TestFocusCycling_Tab(t *testing.T) {
 			name:                "Tab from namespaces to pods with no pods",
 			initialFocus:        PanelNamespaces,
 			pods:                []k8s.Pod{},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelPods,
 			expectedPodIndex:    -1, // No pods to select
 			expectedActionIndex: -1,
@@ -42,7 +42,7 @@ func TestFocusCycling_Tab(t *testing.T) {
 			name:                "Tab from pods to actions with actions available (Story 4.1)",
 			initialFocus:        PanelPods,
 			pods:                []k8s.Pod{{Name: "test-pod", Status: "Running"}},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelActions,
 			expectedPodIndex:    -1,
 			expectedActionIndex: 0, // Should auto-select first action
@@ -60,7 +60,7 @@ func TestFocusCycling_Tab(t *testing.T) {
 			name:                "Tab from actions to namespaces (Story 4.1)",
 			initialFocus:        PanelActions,
 			pods:                []k8s.Pod{{Name: "test-pod", Status: "Running"}},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelNamespaces,
 			expectedPodIndex:    -1,
 			expectedActionIndex: -1, // Index unchanged (stays at initial -1)
@@ -104,7 +104,7 @@ func TestFocusCycling_ShiftTab(t *testing.T) {
 			name:                "Shift+Tab from pods to namespaces",
 			initialFocus:        PanelPods,
 			pods:                []k8s.Pod{{Name: "test-pod", Status: "Running"}},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelNamespaces,
 			expectedPodIndex:    -1,
 			expectedActionIndex: -1,
@@ -113,7 +113,7 @@ func TestFocusCycling_ShiftTab(t *testing.T) {
 			name:                "Shift+Tab from namespaces to actions with actions available (Story 4.1)",
 			initialFocus:        PanelNamespaces,
 			pods:                []k8s.Pod{{Name: "test-pod", Status: "Running"}},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelActions,
 			expectedPodIndex:    -1,
 			expectedActionIndex: 0, // Should auto-select first action
@@ -131,7 +131,7 @@ func TestFocusCycling_ShiftTab(t *testing.T) {
 			name:                "Shift+Tab from actions to pods with pods available (Story 4.1)",
 			initialFocus:        PanelActions,
 			pods:                []k8s.Pod{{Name: "test-pod", Status: "Running"}},
-			actions:             []config.Action{{Name: "Test", Shortcut: "t", Type: "pod_exec"}},
+			actions:             []config.Action{{Name: "Test", Shortcut: "t"}},
 			expectedFocus:       PanelPods,
 			expectedPodIndex:    0, // Should auto-select first pod
 			expectedActionIndex: -1,
@@ -220,7 +220,7 @@ func TestActionsPanelFocusInitialization(t *testing.T) {
 		Contexts: []config.Context{{
 			Name: "test",
 			Actions: []config.Action{
-				{Name: "Console", Shortcut: "c", Type: "pod_exec"},
+				{Name: "Console", Shortcut: "c"},
 			},
 		}},
 	}
@@ -237,8 +237,8 @@ func TestAutoSelectFirstAction(t *testing.T) {
 	model := AppModel{
 		focusedPanel: PanelPods,
 		actions: []config.Action{
-			{Name: "Console", Shortcut: "c", Type: "pod_exec"},
-			{Name: "Logs", Shortcut: "l", Type: "local"},
+			{Name: "Console", Shortcut: "c"},
+			{Name: "Logs", Shortcut: "l"},
 		},
 		selectedActionIndex: -1,
 		viewMode:            viewModeNamespaceView,
@@ -256,9 +256,9 @@ func TestAutoSelectFirstAction(t *testing.T) {
 // TestActionsNavigation_ArrowKeys tests arrow key navigation in actions panel (Story 4.1)
 func TestActionsNavigation_ArrowKeys(t *testing.T) {
 	actions := []config.Action{
-		{Name: "Console", Shortcut: "c", Type: "pod_exec"},
-		{Name: "Logs", Shortcut: "l", Type: "local"},
-		{Name: "Dashboard", Shortcut: "d", Type: "url"},
+		{Name: "Console", Shortcut: "c"},
+		{Name: "Logs", Shortcut: "l"},
+		{Name: "Dashboard", Shortcut: "d"},
 	}
 
 	tests := []struct {

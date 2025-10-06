@@ -419,9 +419,9 @@ func TestAppModel_View_ContextSelection(t *testing.T) {
 	t.Run("shows context selection screen", func(t *testing.T) {
 		cfg := &config.Config{
 			Contexts: []config.Context{
-				{Name: "production", FavoriteNamespaces: []string{"default", "api"}},
+				{Name: "production"},
 				{Name: "staging"},
-				{Name: "development", FavoriteNamespaces: []string{"default"}},
+				{Name: "development"},
 			},
 		}
 		model := NewAppModel(cfg, newMockAdapter())
@@ -433,8 +433,7 @@ func TestAppModel_View_ContextSelection(t *testing.T) {
 		assert.Contains(t, view, "production", "should show context name")
 		assert.Contains(t, view, "staging", "should show second context")
 		assert.Contains(t, view, "development", "should show third context")
-		assert.Contains(t, view, "2 namespaces", "should show namespace count for production")
-		assert.Contains(t, view, "1 namespaces", "should show namespace count for development")
+		// After Story 5.1: FavoriteNamespaces removed, namespace count no longer displayed
 		assert.Contains(t, view, "↑/↓ Navigate", "should show navigation hint")
 		assert.Contains(t, view, "Enter: Select", "should show selection hint")
 	})
@@ -714,7 +713,7 @@ func TestAppModel_RenderNamespaceList(t *testing.T) {
 	t.Run("shows namespace list", func(t *testing.T) {
 		cfg := &config.Config{
 			Contexts: []config.Context{
-				{Name: "test-context", FavoriteNamespaces: []string{"production"}},
+				{Name: "test-context"},
 			},
 		}
 		model := NewAppModel(cfg, newMockAdapter())
@@ -730,7 +729,7 @@ func TestAppModel_RenderNamespaceList(t *testing.T) {
 		assert.Contains(t, view, "production", "should show namespace")
 		assert.Contains(t, view, "default", "should show namespace")
 		assert.Contains(t, view, "kube-system", "should show namespace")
-		assert.Contains(t, view, "★", "should show favorite indicator")
+		// After Story 5.1: FavoriteNamespaces removed, no favorite indicator
 		assert.Contains(t, view, "Navigate", "should show navigation hint")
 	})
 }

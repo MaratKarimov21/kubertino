@@ -14,7 +14,7 @@ func TestSearchMode_Activation(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -36,7 +36,7 @@ func TestSearchMode_Deactivation(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -113,10 +113,8 @@ func TestSearchMode_CharacterInput(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				Version: "1.0",
-				Contexts: []config.Context{
-					{Name: "test-context", FavoriteNamespaces: []string{}},
-				},
+				Version:  "1.0",
+				Contexts: []config.Context{},
 			}
 			model := NewAppModel(cfg, newMockAdapter())
 			model.viewMode = viewModeNamespaceView
@@ -140,7 +138,7 @@ func TestSearchMode_Backspace(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -163,7 +161,7 @@ func TestSearchMode_BackspaceOnEmpty(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -185,7 +183,7 @@ func TestSearchMode_EnterSelectsNamespace(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -209,7 +207,7 @@ func TestSearchMode_Navigation(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -239,7 +237,7 @@ func TestSearchMode_EmptyQuery(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -260,7 +258,7 @@ func TestSearchMode_FuzzyMatching(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -279,7 +277,7 @@ func TestSearchMode_NoMatches(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -296,7 +294,7 @@ func TestRenderNamespaceList_SearchMode(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -320,7 +318,7 @@ func TestRenderNamespaceList_SearchModeNoMatches(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -342,7 +340,7 @@ func TestRenderNamespaceList_NormalMode(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -364,7 +362,7 @@ func TestGetMatchIndices(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
@@ -382,7 +380,7 @@ func TestGetMatchIndices_NotInSearchMode(t *testing.T) {
 	cfg := &config.Config{
 		Version: "1.0",
 		Contexts: []config.Context{
-			{Name: "test-context", FavoriteNamespaces: []string{}},
+			{Name: "test-context"},
 		},
 	}
 	model := NewAppModel(cfg, newMockAdapter())
