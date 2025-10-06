@@ -39,23 +39,21 @@ Kubertino takes a lazy loading approach - only fetching data for the selected na
 
 **FR3:** Execute configurable actions on selected namespace using keyboard shortcuts
 
-**FR4:** Support pod_exec action type for running commands inside pods matching configured regex patterns
+**FR4:** Support universal action template system with variable substitution ({{context}}, {{namespace}}, {{pod}}) for flexible command aliasing, enabling users to execute any command (kubectl exec, open URLs, local scripts) with dynamic context-aware parameters
 
-**FR5:** Support url action type for opening web links with variable substitution ({{namespace}}, {{pod}})
+**FR5:** Support global actions (available for all contexts) and per-context actions (override/extend global actions)
 
-**FR6:** Support local action type for executing commands on local machine with kubectl context
+**FR6:** Display pods matching default pod pattern for selected namespace
 
-**FR7:** Display pods matching default pod pattern for selected namespace
+**FR7:** Validate configuration file (~/.kubertino.yml) on startup with clear error messages
 
-**FR8:** Validate configuration file (~/.kubertino.yml) on startup with clear error messages
+**FR8:** Show context and namespace information in decorative box when executing pod commands
 
-**FR9:** Show context and namespace information in decorative box when executing pod commands
+**FR9:** Support favorite namespaces configuration in two formats: per-context map or global list (displayed at top of namespace list)
 
-**FR10:** Support favorite namespaces configuration per context (displayed at top of list)
+**FR10:** Provide visual feedback for action execution (command running, success, failure)
 
-**FR11:** Provide visual feedback for action execution (command running, success, failure)
-
-**FR12:** Handle multiple pods matching regex pattern by selecting first pod
+**FR11:** Handle multiple pods matching regex pattern by selecting first pod
 
 ### Non Functional
 
@@ -179,6 +177,77 @@ Kubertino prioritizes speed and keyboard-driven navigation. The interface focuse
 - golangci-lint for code quality
 - No IDE-specific requirements
 
+### Configuration File Example
+
+**Example ~/.kubertino.yml structure:**
+
+```yaml
+version: "1.0"
+
+# Optional: Override default kubeconfig path
+kubeconfig: ~/.kube/config
+
+# Global actions (available for all contexts)
+actions:
+  - name: "View Logs"
+    shortcut: "l"
+    command: "kubectl logs -n {{namespace}} {{pod}} -f --tail=100"
+
+  - name: "Open Dashboard"
+    shortcut: "d"
+    command: "open https://dashboard.example.com/{{context}}/{{namespace}}"
+
+  - name: "Port Forward"
+    shortcut: "p"
+    command: "kubectl port-forward -n {{namespace}} {{pod}} 3000:3000"
+
+# Favorites - Format A: Per-context map
+favorites:
+  production:
+    - critical-app
+    - monitoring
+    - payment-service
+  staging:
+    - staging-app
+    - test-namespace
+
+# Favorites - Format B: Global list (alternative)
+# favorites:
+#   - my-namespace
+#   - another-namespace
+
+contexts:
+  - name: production
+    default_pod_pattern: ".*"
+    # Per-context actions (optional, extend/override global)
+    actions:
+      - name: "Rails Console"
+        shortcut: "c"
+        command: "kubectl exec -n {{namespace}} {{pod}} -it -- bundle exec rails console"
+        pod_pattern: "rails-web-.*"
+
+      - name: "DB Console"
+        shortcut: "b"
+        command: "kubectl exec -n {{namespace}} {{pod}} -it -- bundle exec rails dbconsole"
+        pod_pattern: "rails-web-.*"
+
+  - name: staging
+    default_pod_pattern: ".*"
+    actions:
+      - name: "Bash Shell"
+        shortcut: "s"
+        command: "kubectl exec -n {{namespace}} {{pod}} -it -- /bin/bash"
+```
+
+**Key Configuration Features:**
+
+- **Global Actions:** Defined at top-level, available across all contexts
+- **Per-Context Actions:** Defined within context, extend or override global actions
+- **Template Variables:** `{{context}}`, `{{namespace}}`, `{{pod}}` substituted at runtime
+- **Dual Favorites Format:** Supports both per-context map and global list
+- **Pod Pattern Matching:** Optional regex for selecting specific pods
+- **Flexible Commands:** Any shell command (kubectl, open, scripts, etc.)
+
 ## Epic List
 
 The following epics deliver Kubertino functionality in logical, sequential increments:
@@ -191,7 +260,9 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 
 **Epic 4: Action System Core** - Implement configurable action execution framework with pod_exec type
 
-**Epic 5: Extended Actions & Polish** - Add URL and local action types, favorites, and UI refinements
+**Epic 5: Action System Simplification** - Refactor actions to universal template-based system with global/per-context configuration
+
+**Epic 6: Extended Features & Polish** - Add favorites, keyboard shortcuts help, config reload, and performance optimization
 
 ## Epic 1: Foundation & Core CLI
 

@@ -37,31 +37,20 @@
 
 ## Story 4.3: Context Box Display
 
-**As a** user,
-**I want** to see a decorative box showing context and namespace,
-**so that** I know where I'm executing commands.
+**Status:** ✅ Merged into Story 4.2
 
-**Acceptance Criteria:**
+**Note:** Context box functionality was implemented as part of Story 4.2 (executor package includes `internal/executor/context_box.go`). The context box displays before command execution showing context, namespace, pod, and action name. All acceptance criteria for Story 4.3 were fulfilled within Story 4.2 implementation.
 
-1. Box displayed at top of terminal when TUI minimizes
-2. Box includes: context name, namespace name, pod name, action name
-3. Box styled with borders using ASCII art or Unicode box drawing
-4. Box color-coded or highlighted for visibility
-5. Box remains visible throughout command execution
-6. Box automatically cleared when returning to TUI
+---
 
 ## Story 4.4: Error Handling for Actions
 
-**As a** user,
-**I want** clear error messages when actions fail,
-**so that** I understand what went wrong and how to fix it.
+**Status:** ✅ Merged into Story 4.2
 
-**Acceptance Criteria:**
+**Note:** Comprehensive error handling was implemented in Story 4.2 (`internal/executor/errors.go`, TUI error display in `internal/tui/app.go`). All acceptance criteria met within Story 4.2:
+- Pod pattern matching errors with helpful context
+- Kubectl exec failure handling
+- TUI error panel display
+- Non-fatal error handling (always return to TUI)
 
-1. Pod not found: show error with actual pod pattern and found pods
-2. Kubectl exec failed: show kubectl error message
-3. Permission denied: show RBAC-related error with context
-4. Network timeout: show timeout error with retry option
-5. Invalid configuration: prevent action execution, show config error
-6. All errors return user to TUI (don't exit application)
-7. Errors logged to file (~/.kubertino/logs/errors.log) for debugging
+Error logging to file (AC 7) was deferred as optional feature.

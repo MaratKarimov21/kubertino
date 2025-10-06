@@ -85,10 +85,10 @@ graph TD
 - Rationale: Required by Bubble Tea, provides predictable state management
 
 **Command Pattern:** Actions encapsulated as executable commands with templating
-- Rationale: Flexible action system, easy to extend with new action types
+- Rationale: Flexible action system, simple universal interface
 
-**Strategy Pattern:** Different action types (pod_exec, url, local) implement common interface
-- Rationale: Clean abstraction for action execution, extensible design
+**Template Pattern:** Action commands use Go template syntax for variable substitution ({{context}}, {{namespace}}, {{pod}})
+- Rationale: Maximum flexibility allowing users to define any command structure, eliminates need for action type distinction, supports kubectl exec, URLs, local scripts with single unified approach
 
 ## Tech Stack
 
@@ -114,39 +114,51 @@ graph TD
 **Purpose:** Represents the complete user configuration from ~/.kubertino.yml
 
 **Key Attributes:**
-- `Contexts`: []Context - List of Kubernetes contexts with their settings
 - `Version`: string - Config file format version
+- `Kubeconfig`: string - Optional override for kubeconfig path
+- `Actions`: []Action - Global actions available for all contexts
+- `Favorites`: interface{} - Favorite namespaces (supports two formats: map[string][]string or []string)
+- `Contexts`: []Context - List of Kubernetes contexts with their settings
 
 **Relationships:**
-- Root configuration contains multiple Context objects
-- Each Context contains multiple Action objects
+- Root configuration contains global Actions and Favorites
+- Each Context can define additional Actions that extend/override global ones
+- Favorites can be either per-context (map) or global (list)
 
-**TypeScript-style Interface:**
+**Go Data Models:**
 
 ```go
 type Config struct {
-    Version  string    `yaml:"version"`
-    Contexts []Context `yaml:"contexts"`
+    Version    string      `yaml:"version"`
+    Kubeconfig string      `yaml:"kubeconfig,omitempty"`        // Optional kubeconfig path override
+    Actions    []Action    `yaml:"actions,omitempty"`           // Global actions for all contexts
+    Favorites  interface{} `yaml:"favorites,omitempty"`         // map[string][]string OR []string
+    Contexts   []Context   `yaml:"contexts"`
 }
 
 type Context struct {
-    Name               string   `yaml:"name"`
-    Kubeconfig         string   `yaml:"kubeconfig"`
-    ClusterURL         string   `yaml:"cluster_url,omitempty"`
-    DefaultPodPattern  string   `yaml:"default_pod_pattern"`
-    FavoriteNamespaces []string `yaml:"favorite_namespaces"`
-    Actions            []Action `yaml:"actions"`
+    Name              string   `yaml:"name"`
+    DefaultPodPattern string   `yaml:"default_pod_pattern,omitempty"`
+    Actions           []Action `yaml:"actions,omitempty"` // Per-context actions (extend/override global)
 }
 
 type Action struct {
-    Name       string `yaml:"name"`
-    Shortcut   string `yaml:"shortcut"`
-    Type       string `yaml:"type"` // pod_exec, url, local
-    Command    string `yaml:"command,omitempty"`
-    URL        string `yaml:"url,omitempty"`
-    PodPattern string `yaml:"pod_pattern,omitempty"`
+    Name        string `yaml:"name"`
+    Shortcut    string `yaml:"shortcut"`
+    Command     string `yaml:"command"`                   // Template with {{context}}, {{namespace}}, {{pod}}
+    PodPattern  string `yaml:"pod_pattern,omitempty"`     // Optional pod regex override
+    Container   string `yaml:"container,omitempty"`       // Optional container name for multi-container pods
+    Destructive bool   `yaml:"destructive,omitempty"`     // Requires confirmation (optional)
 }
 ```
+
+**Key Changes from Previous Version:**
+- **Removed:** `Action.Type` field (pod_exec, url, local) - unified into template-based commands
+- **Removed:** `Action.URL` field - URLs now in `Command` field (e.g., `command: "open https://..."`)
+- **Removed:** `Context.FavoriteNamespaces` - moved to top-level `Config.Favorites`
+- **Added:** `Config.Actions` - global actions shared across contexts
+- **Added:** `Config.Favorites` - supports dual format (per-context map or global list)
+- **Added:** `Context.Actions` - per-context actions that extend/override global
 
 ### Application State Model
 
@@ -323,17 +335,20 @@ func (k *KubeAdapter) GetNamespaces(context string) ([]string, error) {
 
 ### Command Executor
 
-**Responsibility:** Execute actions, manage terminal state during execution
+**Responsibility:** Execute action commands with template variable substitution, manage terminal state during execution
 
 **Key Interfaces:**
-- `Execute(action Action, context, namespace, pod string) error` - Execute action
-- `ExecutePodExec(context, namespace, pod, command string) error` - Execute in pod
-- `ExecuteLocal(command string) error` - Execute local command
-- `OpenURL(url string) error` - Open URL in browser
+- `Execute(action Action, context Context, namespace, pod string) error` - Parse template, substitute variables, execute command
+
+**Template Variables:**
+- `{{context}}` - Current Kubernetes context name
+- `{{namespace}}` - Selected namespace
+- `{{pod}}` - Matched pod name (using pod_pattern regex)
 
 **Dependencies:**
+- text/template for Go template parsing
 - os/exec for command execution
-- Terminal management for PTY
+- Terminal management via tea.ExecProcess
 
 **Implementation:**
 ```go
@@ -341,20 +356,48 @@ type Executor struct {
     kubeAdapter *KubeAdapter
 }
 
-func (e *Executor) ExecutePodExec(context, namespace, pod, command string) error {
-    // Show context box
-    fmt.Println(renderContextBox(context, namespace, pod))
-    
-    // Execute kubectl with TTY
-    cmd := exec.Command("kubectl", "--context", context, "-n", namespace, 
-                        "exec", "-it", pod, "--", "sh", "-c", command)
+func (e *Executor) Execute(action Action, context Context, namespace, pod string) error {
+    // 1. Parse command template
+    tmpl, err := template.New("action").Parse(action.Command)
+    if err != nil {
+        return fmt.Errorf("invalid command template: %w", err)
+    }
+
+    // 2. Substitute template variables
+    data := map[string]string{
+        "context":   context.Name,
+        "namespace": namespace,
+        "pod":       pod,
+    }
+
+    var buf bytes.Buffer
+    if err := tmpl.Execute(&buf, data); err != nil {
+        return fmt.Errorf("template execution failed: %w", err)
+    }
+
+    command := buf.String()
+
+    // 3. Show context box
+    fmt.Println(renderContextBox(context.Name, namespace, pod, action.Name))
+
+    // 4. Execute command with shell
+    // Note: Using sh -c allows complex commands with pipes, redirects, etc.
+    cmd := exec.Command("sh", "-c", command)
     cmd.Stdin = os.Stdin
     cmd.Stdout = os.Stdout
     cmd.Stderr = os.Stderr
-    
+
     return cmd.Run()
 }
 ```
+
+**Example Template Substitutions:**
+
+| Template Command | Substituted Command (context=prod, ns=app, pod=web-123) |
+|-----------------|----------------------------------------------------------|
+| `kubectl logs -n {{namespace}} {{pod}}` | `kubectl logs -n app web-123` |
+| `open https://dash/{{context}}/{{namespace}}` | `open https://dash/prod/app` |
+| `kubectl exec -n {{namespace}} {{pod}} -it -- bash` | `kubectl exec -n app web-123 -it -- bash` |
 
 ## Core Workflows
 

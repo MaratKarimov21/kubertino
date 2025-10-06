@@ -1,40 +1,12 @@
-# Epic 5: Extended Actions & Polish
+# Epic 6: Extended Features & Polish
 
-**Goal:** Implement URL and local action types, add favorite namespace support, and refine UI/UX based on MVP usage. This epic completes the MVP feature set.
+**Goal:** Add favorite namespace support, keyboard shortcuts help, configuration reload, and performance optimization to complete the MVP feature set.
 
-## Story 5.1: URL Action Type
+**Note:** Stories 5.1 (URL Action Type) and 5.2 (Local Action Type) were removed and replaced by Epic 5's universal template-based action system. URL and local command execution is now handled through template commands (e.g., `command: "open https://..."` or `command: "kubectl get pods -n {{namespace}}"`).
 
-**As a** user,
-**I want** to open URLs with namespace/pod variable substitution,
-**so that** I can quickly access web interfaces related to my namespace.
+---
 
-**Acceptance Criteria:**
-
-1. URL action type supported in configuration
-2. Variables {{namespace}} and {{pod}} substituted in URL template
-3. URL opened in default browser automatically
-4. URL also printed to console for reference
-5. Error shown if browser launch fails
-6. Multiple URL actions can be configured per context
-7. URL validation performed during config load
-
-## Story 5.2: Local Action Type
-
-**As a** user,
-**I want** to execute commands on my local machine,
-**so that** I can run kubectl commands or scripts with context.
-
-**Acceptance Criteria:**
-
-1. Local action type supported in configuration
-2. Commands executed in local shell with kubectl context set
-3. Variables {{namespace}} and {{pod}} available in command template
-4. Command output shown in terminal (TUI minimized)
-5. Exit code captured and displayed
-6. Error handling for command not found or execution failure
-7. Environment variables preserved from parent shell
-
-## Story 5.3: Favorite Namespaces Display
+## Story 6.1: Favorite Namespaces Display
 
 **As a** user,
 **I want** favorite namespaces displayed at top of the list,
@@ -50,7 +22,7 @@
 6. Empty favorites list handled gracefully (no separator shown)
 7. Favorites update when configuration reloaded
 
-## Story 5.4: Keyboard Shortcuts Help
+## Story 6.2: Keyboard Shortcuts Help
 
 **As a** user,
 **I want** to view all keyboard shortcuts,
@@ -65,7 +37,7 @@
 5. Global shortcuts listed separately from action shortcuts
 6. Help accessible from any screen
 
-## Story 5.5: Configuration Reload
+## Story 6.3: Configuration Reload
 
 **As a** user,
 **I want** to reload configuration without restarting,
@@ -81,7 +53,7 @@
 6. Current context and namespace selection preserved if still valid
 7. Actions list updated to reflect new configuration
 
-## Story 5.6: Performance Optimization
+## Story 6.4: Performance Optimization
 
 **As a** developer,
 **I want** kubertino to meet NFR performance targets,

@@ -10,4 +10,6 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 
 **Epic 4: Action System Core** - Implement configurable action execution framework with pod_exec type
 
-**Epic 5: Extended Actions & Polish** - Add URL and local action types, favorites, and UI refinements
+**Epic 5: Action System Simplification** - Refactor actions to universal template-based system with global/per-context configuration
+
+**Epic 6: Extended Features & Polish** - Add favorites, keyboard shortcuts help, config reload, and performance optimization
