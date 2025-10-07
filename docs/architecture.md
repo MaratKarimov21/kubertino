@@ -90,6 +90,13 @@ graph TD
 **Template Pattern:** Action commands use Go template syntax for variable substitution ({{.context}}, {{.namespace}}, {{.pod}})
 - Rationale: Maximum flexibility allowing users to define any command structure, eliminates need for action type distinction, supports kubectl exec, URLs, local scripts with single unified approach
 
+**UI Pattern Updates (Epic 6):**
+- Favorites displayed with color highlight only (no icons/separators)
+- Favorites order preserved from config (not sorted)
+- Error handling via modal dialogs (not inline logs)
+- Loading states indicated by spinners in relevant panels
+- "Special pods" concept removed - always select first matching pod
+
 ## Tech Stack
 
 ### Technology Stack Table
@@ -333,6 +340,49 @@ func (k *KubeAdapter) GetNamespaces(context string) ([]string, error) {
 - Action list from config
 - Action execution state
 
+---
+
+### Error Modal Component
+
+**Responsibility:** Display error messages with retry capability
+
+**Key Interfaces:**
+- `Show(message, operation string, retryFunc func() tea.Cmd)` - Display error modal
+- `Hide()` - Dismiss modal
+- `View() string` - Render modal overlay
+
+**State:**
+- Error message
+- Failed operation context
+- Retry callback function
+- Visibility flag
+
+**Technical Notes:**
+- Uses Lip Gloss for red border styling
+- Centered overlay using terminal dimensions
+- Blocks input propagation to underlying panels
+
+---
+
+### Spinner Component
+
+**Responsibility:** Display loading indicators during async operations
+
+**Key Interfaces:**
+- `Start(message string)` - Begin spinner animation
+- `Stop()` - Stop spinner
+- `View() string` - Render current spinner frame
+
+**State:**
+- Animation frame index
+- Loading message
+- Active/inactive flag
+
+**Technical Notes:**
+- Uses Bubble Tea tick messages for animation
+- Consistent spinner style across all panels (e.g., dots, circle, etc.)
+- Positioned within panel being loaded (namespace panel, pod panel)
+
 ### Command Executor
 
 **Responsibility:** Execute action commands with template variable substitution, manage terminal state during execution
@@ -481,6 +531,9 @@ kubertino/
 │   │   │   ├── namespaces.go     # Namespace panel model
 │   │   │   ├── pods.go           # Pod panel model
 │   │   │   └── actions.go        # Actions panel model
+│   │   ├── components/           # Reusable UI components
+│   │   │   ├── modal.go          # Error modal component
+│   │   │   └── spinner.go        # Loading spinner component
 │   │   ├── styles/
 │   │   │   └── styles.go         # Lip Gloss styles
 │   │   └── keys.go               # Keyboard bindings
@@ -670,6 +723,56 @@ if err := executor.Execute(action); err != nil {
     return model, nil
 }
 ```
+
+### Error Modal Pattern
+
+**Purpose:** Provide consistent, user-friendly error feedback with retry capability
+
+**Implementation:**
+
+All error scenarios should trigger an error modal overlay instead of inline error displays:
+
+```go
+type ErrorModal struct {
+    Message     string
+    Operation   string
+    Suggestion  string
+    RetryFunc   func() tea.Cmd
+    IsVisible   bool
+}
+
+// In main app model
+type AppModel struct {
+    // ... existing fields
+    errorModal ErrorModal
+}
+
+// When error occurs
+func (m AppModel) showError(msg, operation string, retryFunc func() tea.Cmd) AppModel {
+    m.errorModal = ErrorModal{
+        Message:    msg,
+        Operation:  operation,
+        RetryFunc:  retryFunc,
+        IsVisible:  true,
+    }
+    return m
+}
+
+// In Update function
+case key.Matches(msg, m.keys.Enter):
+    if m.errorModal.IsVisible {
+        m.errorModal.IsVisible = false
+        if m.errorModal.RetryFunc != nil {
+            return m, m.errorModal.RetryFunc()
+        }
+    }
+```
+
+**Modal Styling:**
+- Red border using Lip Gloss border styles
+- Centered overlay on top of main view
+- Clear "[Press Enter to retry] [Press ESC to dismiss]" footer
+- Blocks all other keyboard input while visible
 
 ### Error Types
 

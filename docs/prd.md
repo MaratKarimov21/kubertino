@@ -49,11 +49,11 @@ Kubertino takes a lazy loading approach - only fetching data for the selected na
 
 **FR8:** Show context and namespace information in decorative box when executing pod commands
 
-**FR9:** Support favorite namespaces configuration in two formats: per-context map or global list (displayed at top of namespace list)
+**FR9:** Support favorite namespaces configuration in two formats: per-context map or global list. Favorites displayed at top of namespace list with color highlighting only (no icons or separators), preserving config file order.
 
-**FR10:** Provide visual feedback for action execution (command running, success, failure)
+**FR10:** Provide visual feedback for all operations: loading spinners during data fetching, error modal dialogs with retry capability for failures, and command execution status
 
-**FR11:** Handle multiple pods matching regex pattern by selecting first pod
+**FR11:** Handle multiple pods matching regex pattern by silently selecting first pod alphabetically (no special pod concept, no error messages for multiple matches)
 
 ### Non Functional
 
@@ -65,7 +65,7 @@ Kubertino takes a lazy loading approach - only fetching data for the selected na
 
 **NFR4:** Configuration file parsing must fail fast with actionable error messages
 
-**NFR5:** UI must remain responsive during all operations (no blocking renders)
+**NFR5:** UI must remain responsive during all operations (no blocking renders), with loading spinners displayed during async operations (namespace fetch, pod fetch, action execution)
 
 **NFR6:** Memory footprint must be minimal (< 50MB for typical operation)
 
@@ -111,6 +111,12 @@ Kubertino prioritizes speed and keyboard-driven navigation. The interface focuse
 - Minimized TUI showing context/namespace box
 - Full terminal control handed to executed command
 - Returns to TUI on command exit
+
+**Error Handling View:**
+- Modal dialog overlay with red border for all errors
+- Error message with context and retry option
+- "[Press Enter to retry]" / "[Press ESC to dismiss]" instructions
+- Modal blocks interaction with main view until dismissed
 
 ### Accessibility
 
@@ -262,7 +268,7 @@ The following epics deliver Kubertino functionality in logical, sequential incre
 
 **Epic 5: Action System Simplification** - Refactor actions to universal template-based system with global/per-context configuration
 
-**Epic 6: Extended Features & Polish** - Add favorites, keyboard shortcuts help, config reload, and performance optimization
+**Epic 6: UI/UX Bug Fixes & Refinement** - Fix critical navigation, pod selection, actions, and error handling bugs
 
 ## Epic 1: Foundation & Core CLI
 
@@ -547,74 +553,98 @@ Action commands now use Go template syntax with {{.context}}, {{.namespace}}, {{
 
 Favorites configuration supports both per-context map and global list formats with proper TUI integration.
 
-## Epic 6: Extended Features & Polish
+## Epic 6: UI/UX Bug Fixes & Refinement
 
-**Goal:** Add favorite namespace support, keyboard shortcuts help, configuration reload, and performance optimization to complete the MVP feature set.
+**Goal:** Fix critical UI/UX bugs in namespace list navigation, pod selection, actions system, and error handling to ensure production-ready user experience.
 
-**Note:** Stories 5.1 (URL Action Type) and 5.2 (Local Action Type) from original Epic 5 were removed and replaced by Epic 5's universal template-based action system. URL and local command execution is now handled through template commands.
+**Context:** Epic 1-5 delivered core functionality, but during testing accumulated 9 critical UI/UX issues that must be resolved before MVP release.
 
-### Story 6.1: Favorite Namespaces Display
+**Note:** This epic replaces the previous "Extended Features & Polish" epic. Stories related to keyboard shortcuts help, configuration reload, and performance optimization were deemed non-critical for MVP and removed from scope.
 
-**As a** user,
-**I want** favorite namespaces displayed at top of the list,
-**so that** I can quickly access frequently used namespaces.
-
-**Acceptance Criteria:**
-
-1. Favorite namespaces from config shown before regular namespaces
-2. Visual separator between favorites and regular list
-3. Favorite namespaces sorted alphabetically
-4. Regular namespaces sorted alphabetically
-5. Favorites persist across context switches (per-context)
-6. Empty favorites list handled gracefully (no separator shown)
-7. Favorites update when configuration reloaded
-
-### Story 6.2: Keyboard Shortcuts Help
+### Story 6.1: Namespace List Navigation Fixes
 
 **As a** user,
-**I want** to view all keyboard shortcuts,
-**so that** I can learn and remember available commands.
+**I want** namespace list navigation to behave correctly with proper cursor management and favorites display,
+**so that** I can efficiently navigate large namespace lists without confusion.
 
 **Acceptance Criteria:**
 
-1. Pressing '?' displays help overlay
-2. Help shows: navigation keys, search activation, action shortcuts, quit
-3. Help overlay dismissable with ESC or '?'
-4. Help overlay does not block main view entirely (semi-transparent or bordered)
-5. Global shortcuts listed separately from action shortcuts
-6. Help accessible from any screen
+1. **Favorites Visual Display:**
+   - Favorite namespaces displayed with color highlighting only (no star icon, no visual separator)
+   - Favorites appear in the same order as defined in config file (not alphabetically sorted)
+   - Regular namespaces continue after favorites in alphabetical order
 
-### Story 6.3: Configuration Reload
+2. **Cursor Visibility During Scroll:**
+   - Cursor remains visible at all times when navigating namespace list
+   - No disappearing cursor after several key presses during scroll
+
+3. **Cursor Centering Behavior:**
+   - When scrolling down a long list:
+     - Cursor starts at top of visible list
+     - Cursor moves down until reaching middle of visible viewport
+     - List scrolls while keeping cursor centered in viewport
+     - When bottom of list reached, cursor continues to bottom
+   - Same behavior applies in reverse when scrolling up
+
+4. **Cursor Persistence on Focus Change:**
+   - When pressing Enter on namespace, cursor remains on selected namespace
+   - Focus shifts to pod panel, but namespace selection visually persists
+   - User can see which namespace is currently active
+
+### Story 6.2: Pod Selection & Actions System Fixes
 
 **As a** user,
-**I want** to reload configuration without restarting,
-**so that** I can test configuration changes quickly.
+**I want** pod selection and actions to work correctly without confusing "special pods" concept,
+**so that** I can execute actions reliably on selected pods.
 
 **Acceptance Criteria:**
 
-1. Pressing 'r' triggers configuration reload
-2. Configuration file re-read and re-validated
-3. Current view refreshed with new configuration
-4. Success message shown if reload successful
-5. Error message shown with details if reload fails
-6. Current context and namespace selection preserved if still valid
-7. Actions list updated to reflect new configuration
+1. **Remove "Special Pods" Concept:**
+   - Eliminate all logic related to distinguishing "special" pods
+   - Always use first pod matching the action's `pod_pattern` (or default pattern)
+   - Remove error "multiple pods match pattern ^backend.*" - this is expected behavior
+   - If multiple pods match, silently select first one (alphabetically)
 
-### Story 6.4: Performance Optimization
+2. **Actions Panel Non-Focusable:**
+   - Actions panel cannot receive keyboard focus (remove from tab order)
+   - Actions always visible but not interactive via navigation
+   - Action shortcuts work globally regardless of focused panel
+   - If actions list is long, display in multiple columns (2-3 columns) instead of scrolling
 
-**As a** developer,
-**I want** kubertino to meet NFR performance targets,
-**so that** it provides the fast experience promised.
+3. **Action Template Variable Substitution:**
+   - When action executed, correctly substitute `{{.namespace}}` with selected namespace
+   - Correctly substitute `{{.pod}}` with matched pod name
+   - Correctly substitute `{{.context}}` with current context name
+   - Verify substitution works for all action command templates
+
+### Story 6.3: Error Handling & Loading States
+
+**As a** user,
+**I want** clear error feedback via modal dialogs and loading indicators,
+**so that** I understand application state and can recover from errors easily.
 
 **Acceptance Criteria:**
 
-1. Startup time measured and optimized to < 1 second
-2. Namespace fetch parallelized for multiple contexts (if needed)
-3. Pod fetch optimized with kubectl options (--no-headers, specific fields)
-4. Configuration parsing optimized (avoid redundant parsing)
-5. Memory profiling done to ensure < 50MB footprint
-6. Binary size measured (should be < 20MB)
-7. Performance benchmarks documented in README
+1. **Remove Bottom Log Panel:**
+   - Completely remove any log/status display at bottom of screen
+   - Logs should only go to log file (`~/.kubertino/logs/kubertino.log`)
+   - Screen real estate reclaimed for main panels
+
+2. **Error Modal Dialog:**
+   - When any error occurs, display modal dialog overlay on top of all panels
+   - Modal has red border and red-themed styling
+   - Modal shows: error message, affected operation, suggestion (if any)
+   - Modal displays "[Press Enter to retry]" message
+   - Pressing Enter re-executes the failed operation
+   - Pressing ESC dismisses modal and returns to previous state
+   - Modal blocks all other input while displayed
+
+3. **Loading Spinners:**
+   - Display spinner indicator when fetching namespaces (on context switch)
+   - Display spinner indicator when fetching pods (on namespace selection)
+   - Display spinner indicator during action execution (before command takes over terminal)
+   - Spinner shown in relevant panel (namespace panel during NS fetch, pod panel during pod fetch)
+   - Spinner styling consistent across all panels
 
 ## Next Steps
 
