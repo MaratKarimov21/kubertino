@@ -20,8 +20,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Name: "console", Shortcut: "c", Command: "kubectl exec -it {{.pod}} -- /bin/sh"},
 						},
@@ -39,8 +38,7 @@ func TestValidate(t *testing.T) {
 				},
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 					},
 				},
 			},
@@ -50,7 +48,7 @@ func TestValidate(t *testing.T) {
 			name: "missing version",
 			config: &Config{
 				Contexts: []Context{
-					{Name: "test", DefaultPodPattern: ".*"},
+					{Name: "test"},
 				},
 			},
 			wantErr:     true,
@@ -76,7 +74,7 @@ func TestValidate(t *testing.T) {
 			config: &Config{
 				Version: "1.0",
 				Contexts: []Context{
-					{DefaultPodPattern: ".*"},
+					{},
 				},
 			},
 			wantErr:     true,
@@ -90,18 +88,7 @@ func TestValidate(t *testing.T) {
 					{Name: "test"},
 				},
 			},
-			wantErr: false, // DefaultPodPattern is now optional
-		},
-		{
-			name: "invalid regex pattern",
-			config: &Config{
-				Version: "1.0",
-				Contexts: []Context{
-					{Name: "test", DefaultPodPattern: "[invalid(regex"},
-				},
-			},
-			wantErr:     true,
-			errContains: "invalid default_pod_pattern regex",
+			wantErr: false,
 		},
 		{
 			name: "duplicate shortcuts in context",
@@ -109,8 +96,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Name: "console", Shortcut: "c", Command: "/bin/sh"},
 							{Name: "bash", Shortcut: "c", Command: "/bin/bash"},
@@ -130,7 +116,7 @@ func TestValidate(t *testing.T) {
 					{Name: "logs-tail", Shortcut: "l", Command: "kubectl logs {{.pod}} --tail=100"},
 				},
 				Contexts: []Context{
-					{Name: "test", DefaultPodPattern: ".*"},
+					{Name: "test"},
 				},
 			},
 			wantErr:     true,
@@ -142,8 +128,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Shortcut: "c", Command: "/bin/sh"},
 						},
@@ -159,8 +144,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Name: "console", Command: "/bin/sh"},
 						},
@@ -176,8 +160,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Name: "console", Shortcut: "con", Command: "/bin/sh"},
 						},
@@ -193,8 +176,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Name: "console", Shortcut: "c"},
 						},
@@ -210,8 +192,7 @@ func TestValidate(t *testing.T) {
 				Version: "1.0",
 				Contexts: []Context{
 					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
+						Name: "test",
 						Actions: []Action{
 							{Name: "test", Shortcut: "t", Command: "kubectl exec {{pod"},
 						},
@@ -220,23 +201,6 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr:     true,
 			errContains: "invalid command template",
-		},
-		{
-			name: "invalid pod pattern regex",
-			config: &Config{
-				Version: "1.0",
-				Contexts: []Context{
-					{
-						Name:              "test",
-						DefaultPodPattern: ".*",
-						Actions: []Action{
-							{Name: "console", Shortcut: "c", Command: "/bin/sh", PodPattern: "[invalid("},
-						},
-					},
-				},
-			},
-			wantErr:     true,
-			errContains: "invalid pod_pattern regex",
 		},
 	}
 

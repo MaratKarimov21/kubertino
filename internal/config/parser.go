@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,7 +25,18 @@ func Parse(filename string) (*Config, error) {
 		return nil, fmt.Errorf("failed to read config file %s: %w", filename, err)
 	}
 
-	// Parse YAML
+	// Story 6.2: First parse into a generic structure to detect deprecated fields
+	var rawConfig map[string]interface{}
+	if err := yaml.Unmarshal(data, &rawConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Check for deprecated fields at root level and in contexts/actions
+	if err := checkDeprecatedFields(rawConfig); err != nil {
+		return nil, err
+	}
+
+	// Parse YAML into Config struct
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
@@ -39,18 +49,7 @@ func Parse(filename string) (*Config, error) {
 		}
 	}
 
-	// Compile default_pod_pattern for each context
-	for i := range config.Contexts {
-		ctx := &config.Contexts[i]
-		if ctx.DefaultPodPattern != "" {
-			compiled, err := regexp.Compile(ctx.DefaultPodPattern)
-			if err != nil {
-				return nil, fmt.Errorf("context '%s': invalid default_pod_pattern '%s': %w",
-					ctx.Name, ctx.DefaultPodPattern, err)
-			}
-			ctx.CompiledPattern = compiled
-		}
-	}
+	// Story 6.2: Pattern matching removed - no compilation needed
 
 	return &config, nil
 }
@@ -168,4 +167,65 @@ func MergeActions(globalActions, contextActions []Action) []Action {
 	}
 
 	return result
+}
+
+// checkDeprecatedFields detects and rejects deprecated fields from Story 6.2
+func checkDeprecatedFields(rawConfig map[string]interface{}) error {
+	deprecatedFields := map[string]string{
+		"pod_pattern":         "Use manual pod selection workflow instead. All pods must be selected manually via Tab → Enter.",
+		"default_pod_pattern": "Use manual pod selection workflow instead. Remove this field from context configuration.",
+		"container":           "Specify container in command template instead: kubectl exec ... -c container-name",
+		"type":                "All actions now execute as local commands. Remove 'type' field and use full kubectl commands in 'command' field.",
+	}
+
+	// Check contexts
+	if contexts, ok := rawConfig["contexts"].([]interface{}); ok {
+		for i, ctx := range contexts {
+			contextMap, ok := ctx.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			// Check deprecated fields in context
+			for field, msg := range deprecatedFields {
+				if _, exists := contextMap[field]; exists {
+					return fmt.Errorf("context[%d]: deprecated field '%s' is no longer supported. %s", i, field, msg)
+				}
+			}
+
+			// Check actions within context
+			if actions, ok := contextMap["actions"].([]interface{}); ok {
+				for j, act := range actions {
+					actionMap, ok := act.(map[string]interface{})
+					if !ok {
+						continue
+					}
+
+					for field, msg := range deprecatedFields {
+						if _, exists := actionMap[field]; exists {
+							return fmt.Errorf("context[%d], action[%d]: deprecated field '%s' is no longer supported. %s", i, j, field, msg)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Check global actions
+	if actions, ok := rawConfig["actions"].([]interface{}); ok {
+		for i, act := range actions {
+			actionMap, ok := act.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			for field, msg := range deprecatedFields {
+				if _, exists := actionMap[field]; exists {
+					return fmt.Errorf("global action[%d]: deprecated field '%s' is no longer supported. %s", i, field, msg)
+				}
+			}
+		}
+	}
+
+	return nil
 }

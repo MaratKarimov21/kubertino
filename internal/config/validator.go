@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"text/template"
 )
 
@@ -59,12 +58,7 @@ func validateContext(ctx *Context, index int, globalActions []Action) error {
 		return fmt.Errorf("context[%d]: name is required", index)
 	}
 
-	// Validate regex patterns if provided
-	if ctx.DefaultPodPattern != "" {
-		if _, err := regexp.Compile(ctx.DefaultPodPattern); err != nil {
-			return fmt.Errorf("context[%d] (%s): invalid default_pod_pattern regex: %w", index, ctx.Name, err)
-		}
-	}
+	// Story 6.2: default_pod_pattern removed - no validation needed
 
 	// Validate per-context actions
 	shortcuts := make(map[string]string)
@@ -109,13 +103,7 @@ func validateAction(action *Action, index int, contextName string) error {
 			contextName, index, action.Name, err)
 	}
 
-	// Validate pod pattern if provided
-	if action.PodPattern != "" {
-		if _, err := regexp.Compile(action.PodPattern); err != nil {
-			return fmt.Errorf("context (%s), action[%d] (%s): invalid pod_pattern regex: %w",
-				contextName, index, action.Name, err)
-		}
-	}
+	// Story 6.2: pod_pattern removed - no validation needed
 
 	return nil
 }

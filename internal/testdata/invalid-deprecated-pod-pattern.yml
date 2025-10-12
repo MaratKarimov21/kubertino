@@ -1,0 +1,9 @@
+version: "1.0"
+contexts:
+  - name: test
+    default_pod_pattern: "^api-.*"
+    actions:
+      - name: "Console"
+        shortcut: "c"
+        command: "kubectl exec -it {{.pod}} -- /bin/sh"
+

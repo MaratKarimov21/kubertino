@@ -1,23 +1,29 @@
 version: "1.0"
+kubeconfig: ~/.kube/config
+
+# Global actions (Story 6.2 format)
+actions:
+  - name: "View Logs"
+    shortcut: "l"
+    command: "kubectl logs -n {{.namespace}} {{.pod}}"
+
+# Favorites format: per-context map
+favorites:
+  production:
+    - default
+    - api
+  staging:
+    - staging-api
+
 contexts:
-  - name: test-context
-    kubeconfig: ~/.kube/config
-    cluster_url: https://k8s.test.example.com
-    default_pod_pattern: "^api-.*"
-    favorite_namespaces:
-      - default
-      - api
+  - name: production
     actions:
-      - name: Console
-        shortcut: c
-        type: pod_exec
-        command: /bin/sh
-        pod_pattern: "^api-.*"
-      - name: Grafana
-        shortcut: g
-        type: url
-        url: https://grafana.example.com
-      - name: Port Forward
-        shortcut: p
-        type: local
-        command: kubectl port-forward pod 8080:8080
+      - name: "Rails Console"
+        shortcut: "c"
+        command: "kubectl exec -it {{.pod}} -n {{.namespace}} -- rails console"
+
+  - name: staging
+    actions:
+      - name: "Shell"
+        shortcut: "s"
+        command: "kubectl exec -it {{.pod}} -n {{.namespace}} -- /bin/sh"

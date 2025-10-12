@@ -8,6 +8,7 @@ kubeconfig: ~/.kube/config
 
 # Global actions (available for all contexts)
 # These actions are available in every context and can be overridden by per-context actions
+# Story 6.2: All actions execute locally with template variable substitution
 actions:
   - name: "View Logs"
     shortcut: "l"
@@ -44,21 +45,19 @@ favorites:
 contexts:
   # Production context
   - name: production
-    # Default regex pattern for matching pods
-    # This determines which pod is selected when an action doesn't specify pod_pattern
-    default_pod_pattern: "^api-.*"
-
     # Per-context actions (optional, extend/override global actions)
     actions:
       - name: "Rails Console"
         shortcut: "c"
         command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- bundle exec rails console"
-        pod_pattern: "^api-.*"
 
       - name: "Bash Shell"
         shortcut: "b"
         command: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/bash"
-        pod_pattern: "^api-.*"
+
+      - name: "DB Shell (Multi-container pod example)"
+        shortcut: "d"
+        command: "kubectl exec -n {{.namespace}} {{.pod}} -c mysql -it -- mysql -u root"
 
       - name: "Grafana Dashboard"
         shortcut: "g"
@@ -70,7 +69,6 @@ contexts:
 
   # Staging context
   - name: staging
-    default_pod_pattern: "^web-.*"
     actions:
       - name: "Shell"
         shortcut: "s"
@@ -86,7 +84,6 @@ contexts:
 
   # Development context (local minikube/kind)
   - name: minikube
-    default_pod_pattern: ".*"
     actions:
       - name: "Shell"
         shortcut: "s"
@@ -99,11 +96,19 @@ contexts:
 # Template Variables Available in Commands:
 # {{.context}}    - Current Kubernetes context name
 # {{.namespace}}  - Selected namespace
-# {{.pod}}        - Selected pod name (matched by pod_pattern or default_pod_pattern)
+# {{.pod}}        - Manually selected pod name
+#
+# Story 6.2 Changes:
+# - All actions execute as local shell commands
+# - User must manually select a pod before executing actions (Tab → Enter to confirm)
+# - For multi-container pods, specify container in command: -c container-name
+# - No pod_pattern matching - full manual pod selection workflow
 #
 # Examples:
 # - kubectl exec: "kubectl exec -n {{.namespace}} {{.pod}} -it -- /bin/bash"
+# - kubectl exec with specific container: "kubectl exec -n {{.namespace}} {{.pod}} -c mysql -it -- /bin/bash"
 # - kubectl logs: "kubectl logs -n {{.namespace}} {{.pod}} -f --tail=100"
+# - kubectl logs with container: "kubectl logs -n {{.namespace}} {{.pod}} -c app -f"
 # - Open URL: "open https://dashboard.example.com/{{.context}}/{{.namespace}}"
 # - Port forward: "kubectl port-forward -n {{.namespace}} {{.pod}} 3000:3000"
 # - Local script: "./scripts/debug.sh {{.context}} {{.namespace}} {{.pod}}"

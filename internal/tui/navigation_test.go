@@ -161,7 +161,6 @@ func TestPodStateReset(t *testing.T) {
 		namespaces:       []string{"default", "kube-system"},
 		selectedPodIndex: 5,
 		podScrollOffset:  10,
-		defaultPodIndex:  3,
 		focusedPanel:     PanelNamespaces, // Must be on namespaces to select
 		keys:             DefaultKeyMap(), // Need keys for KeyMatches
 	}
@@ -173,7 +172,6 @@ func TestPodStateReset(t *testing.T) {
 
 	assert.Equal(t, -1, m.selectedPodIndex, "Selected pod index should be reset")
 	assert.Equal(t, 0, m.podScrollOffset, "Scroll offset should be reset")
-	assert.Equal(t, -1, m.defaultPodIndex, "Default pod index should be reset")
 }
 
 // TestNavigationWithEmptyPodList tests navigation with empty pod list (Story 3.3)

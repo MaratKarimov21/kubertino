@@ -741,7 +741,7 @@ func TestFavoritesIntegration(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "production", DefaultPodPattern: ".*"},
+				{Name: "production"},
 			},
 			Favorites: map[string]interface{}{
 				"production": []interface{}{"critical", "monitoring"},
@@ -777,7 +777,7 @@ func TestFavoritesIntegration(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "staging", DefaultPodPattern: ".*"},
+				{Name: "staging"},
 			},
 			Favorites: []interface{}{"shared-ns", "common-ns"},
 		}
@@ -807,7 +807,7 @@ func TestFavoritesIntegration(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "test", DefaultPodPattern: ".*"},
+				{Name: "test"},
 			},
 			Favorites: []interface{}{},
 		}
@@ -834,7 +834,7 @@ func TestFavoritesIntegration(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "test", DefaultPodPattern: ".*"},
+				{Name: "test"},
 			},
 			Favorites: nil,
 		}
@@ -858,7 +858,7 @@ func TestFavoritesIntegration(t *testing.T) {
 func TestSortNamespacesWithFavorites(t *testing.T) {
 	cfg := &config.Config{
 		Version:  "1.0",
-		Contexts: []config.Context{{Name: "test", DefaultPodPattern: ".*"}},
+		Contexts: []config.Context{{Name: "test"}},
 	}
 	adapter := newMockAdapter()
 	model := NewAppModel(cfg, adapter)
@@ -916,7 +916,7 @@ func TestFavoritesDisplay(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "production", DefaultPodPattern: ".*"},
+				{Name: "production"},
 			},
 			Favorites: []interface{}{"critical"},
 		}
@@ -941,7 +941,7 @@ func TestFavoritesDisplay(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "production", DefaultPodPattern: ".*"},
+				{Name: "production"},
 			},
 			Favorites: []interface{}{"critical"},
 		}
@@ -966,7 +966,7 @@ func TestFavoritesDisplay(t *testing.T) {
 	t.Run("no star marker when favorites empty", func(t *testing.T) {
 		cfg := &config.Config{
 			Version:  "1.0",
-			Contexts: []config.Context{{Name: "production", DefaultPodPattern: ".*"}},
+			Contexts: []config.Context{{Name: "production"}},
 		}
 
 		adapter := newMockAdapter()
@@ -988,7 +988,7 @@ func TestFavoritesDisplay(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "production", DefaultPodPattern: ".*"},
+				{Name: "production"},
 			},
 			Favorites: []interface{}{"critical", "monitoring"},
 		}
@@ -1014,8 +1014,8 @@ func TestContextSwitchingWithFavorites(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "production", DefaultPodPattern: ".*"},
-				{Name: "staging", DefaultPodPattern: ".*"},
+				{Name: "production"},
+				{Name: "staging"},
 			},
 			Favorites: map[string]interface{}{
 				"production": []interface{}{"critical"},
@@ -1042,7 +1042,7 @@ func TestContextSwitchingWithFavorites(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
-				{Name: "production", DefaultPodPattern: ".*"},
+				{Name: "production"},
 			},
 			Favorites: map[string]interface{}{
 				"production": []interface{}{"critical", "monitoring"},

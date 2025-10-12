@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"sort"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,7 +29,6 @@ const (
 type KubeAdapter interface {
 	GetNamespaces(context string) ([]string, error)
 	GetPods(context, namespace string) ([]k8s.Pod, error)
-	ExecInPod(context, namespace, pod, container, command string) (*exec.Cmd, error)
 }
 
 // namespaceFetchedMsg is sent when namespaces are fetched
@@ -85,22 +83,16 @@ type AppModel struct {
 	podsLoading      bool
 	podsError        error
 	currentNamespace string
-	// Default pod state (Story 3.2)
-	defaultPodIndex   int    // Index of default pod in pods slice (-1 if no match)
-	defaultPodWarning string // Warning message if no pods match pattern
 	// Terminal size fields
 	termWidth        int
 	termHeight       int
 	terminalTooSmall bool
 	// Focus and navigation state (Story 3.3)
 	focusedPanel     PanelType // Which panel has keyboard focus
-	selectedPodIndex int       // Index of selected pod in pods slice (-1 if none)
+	selectedPodIndex int       // Index of selected pod in pods slice (-1 if none, Story 6.2: cursor position = selection)
 	podScrollOffset  int       // Scroll offset for long pod lists
 	// Actions state (Story 4.1)
-	actions             []config.Action // Actions for current context
-	selectedActionIndex int             // Index of selected action (-1 if none)
-	actionsScrollOffset int             // Scroll offset for long action lists
-	actionsPanelHeight  int             // Height of actions panel for scroll calculation
+	actions []config.Action // Actions for current context
 	// Executor and error state (Story 4.2)
 	executor     *executor.Executor
 	errorMessage string // Error message to display in TUI
@@ -111,18 +103,14 @@ type AppModel struct {
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
 func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 	model := AppModel{
-		config:              cfg,
-		contexts:            cfg.Contexts,
-		keys:                DefaultKeyMap(),
-		kubeAdapter:         adapter,
-		defaultPodIndex:     -1,
-		defaultPodWarning:   "",
-		focusedPanel:        PanelNamespaces,               // Story 3.3: Start with namespace panel focused
-		selectedPodIndex:    -1,                            // Story 3.3: No pod selected initially
-		podScrollOffset:     0,                             // Story 3.3: No scroll offset initially
-		selectedActionIndex: -1,                            // Story 4.1: No action selected initially
-		actionsScrollOffset: 0,                             // Story 4.1: No scroll offset initially
-		executor:            executor.NewExecutor(adapter), // Story 4.2: Initialize executor
+		config:           cfg,
+		contexts:         cfg.Contexts,
+		keys:             DefaultKeyMap(),
+		kubeAdapter:      adapter,
+		focusedPanel:     PanelNamespaces,        // Story 3.3: Start with namespace panel focused
+		selectedPodIndex: -1,                     // Story 6.2: No pod selected initially (cursor = selection)
+		podScrollOffset:  0,                      // Story 3.3: No scroll offset initially
+		executor:         executor.NewExecutor(), // Story 6.2: Initialize executor (no adapter needed)
 	}
 
 	// Initialize viewMode based on number of contexts
@@ -230,25 +218,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.podsError = nil
 		m.pods = msg.pods
 
-		// Find default pod based on pattern (Story 3.2)
-		if m.currentContext != nil && len(m.pods) > 0 {
-			idx, found := k8s.MatchDefaultPod(m.pods, m.currentContext.CompiledPattern)
-			m.defaultPodIndex = idx
-
-			if !found {
-				// Pods exist but none match pattern
-				pattern := m.currentContext.DefaultPodPattern
-				if pattern == "" {
-					pattern = "(empty)"
-				}
-				m.defaultPodWarning = fmt.Sprintf("No pods match pattern: %s", pattern)
-			} else {
-				m.defaultPodWarning = ""
-			}
-		} else {
-			m.defaultPodIndex = -1
-			m.defaultPodWarning = ""
-		}
+		// Story 6.2: No default pod pattern matching
+		// User must manually select a pod
 
 		return m, nil
 
@@ -318,17 +289,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.namespaces = nil           // Clear previous namespaces
 				// Story 5.3: Clear favorites (will be loaded with namespaces)
 				m.favoriteNamespaces = nil
-				// Load actions from context (Story 4.1)
+				// Load actions from context (Story 6.2)
 				m.actions = m.currentContext.Actions
-				m.selectedActionIndex = -1
-				m.actionsScrollOffset = 0
 				return m, m.fetchNamespacesCmd()
 			}
 		}
 
 		// Handle namespace view navigation
 		if m.viewMode == viewModeNamespaceView {
-			// Handle Tab key for focus switching (Story 3.3, 4.1)
+			// Handle Tab key for focus switching (Story 6.2: Skip actions panel)
 			if msg.String() == "tab" {
 				switch m.focusedPanel {
 				case PanelNamespaces:
@@ -338,33 +307,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedPodIndex = 0
 					}
 				case PanelPods:
-					m.focusedPanel = PanelActions
-					// Auto-select first action when focusing actions panel (Story 4.1)
-					if len(m.actions) > 0 && m.selectedActionIndex == -1 {
-						m.selectedActionIndex = 0
-					}
-				case PanelActions:
 					m.focusedPanel = PanelNamespaces
 				}
 				return m, nil
 			}
 
-			// Handle Shift+Tab key for backward focus switching (Story 3.3, 4.1)
+			// Handle Shift+Tab key for backward focus switching (Story 6.2: Skip actions panel)
 			if msg.String() == "shift+tab" {
 				switch m.focusedPanel {
-				case PanelActions:
+				case PanelPods:
+					m.focusedPanel = PanelNamespaces
+				case PanelNamespaces:
 					m.focusedPanel = PanelPods
 					// Auto-select first pod when focusing pod panel
 					if len(m.pods) > 0 && m.selectedPodIndex == -1 {
 						m.selectedPodIndex = 0
-					}
-				case PanelPods:
-					m.focusedPanel = PanelNamespaces
-				case PanelNamespaces:
-					m.focusedPanel = PanelActions
-					// Auto-select first action when focusing actions panel (Story 4.1)
-					if len(m.actions) > 0 && m.selectedActionIndex == -1 {
-						m.selectedActionIndex = 0
 					}
 				}
 				return m, nil
@@ -387,11 +344,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.podsLoading = true
 						m.podsError = nil
 						m.pods = nil
-						// Reset pod panel state (Story 3.3)
+						// Reset pod panel state (Story 6.2)
 						m.selectedPodIndex = -1
-						m.defaultPodIndex = -1
 						m.podScrollOffset = 0
-						m.defaultPodWarning = ""
+						// QA Fix: Auto-switch focus to pods panel after namespace selection
+						m.focusedPanel = PanelPods
 						return m, m.fetchPodsCmd()
 					}
 					return m, nil
@@ -418,24 +375,26 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Handle Enter key in normal mode (namespace selection)
 			if !m.searchMode && KeyMatches(msg, m.keys.Enter) {
-				if len(m.namespaces) > 0 && m.selectedNamespaceIndex < len(m.namespaces) {
+				// Story 6.2: Cursor position = pod selection (no Enter confirmation needed)
+				// Enter only used for namespace selection
+				if m.focusedPanel == PanelNamespaces && len(m.namespaces) > 0 && m.selectedNamespaceIndex < len(m.namespaces) {
 					// Select namespace and fetch pods
 					m.currentNamespace = m.namespaces[m.selectedNamespaceIndex]
 					m.podsLoading = true
 					m.podsError = nil
 					m.pods = nil
-					// Reset pod panel state (Story 3.3)
+					// Reset pod panel state (Story 6.2)
 					m.selectedPodIndex = -1
-					m.defaultPodIndex = -1
 					m.podScrollOffset = 0
-					m.defaultPodWarning = ""
+					// QA Fix: Auto-switch focus to pods panel after namespace selection
+					m.focusedPanel = PanelPods
 					return m, m.fetchPodsCmd()
 				}
 				return m, nil
 			}
 
 			// Navigation (works in both normal and search mode)
-			// Handle arrow keys based on focused panel (Story 3.3, 4.1)
+			// Handle arrow keys based on focused panel (Story 6.2: Actions panel removed)
 			if KeyMatches(msg, m.keys.Up) {
 				if m.focusedPanel == PanelNamespaces {
 					// Navigate namespace panel with cursor centering (Story 6.1)
@@ -461,12 +420,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(m.pods) > 0 && m.selectedPodIndex > 0 {
 						m.selectedPodIndex--
 						m.adjustPodScrollOffset()
-					}
-				} else if m.focusedPanel == PanelActions {
-					// Navigate actions panel (Story 4.1)
-					if len(m.actions) > 0 && m.selectedActionIndex > 0 {
-						m.selectedActionIndex--
-						m.adjustActionsScrollOffset()
 					}
 				}
 				return m, nil
@@ -496,12 +449,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(m.pods) > 0 && m.selectedPodIndex < len(m.pods)-1 {
 						m.selectedPodIndex++
 						m.adjustPodScrollOffset()
-					}
-				} else if m.focusedPanel == PanelActions {
-					// Navigate actions panel (Story 4.1)
-					if len(m.actions) > 0 && m.selectedActionIndex < len(m.actions)-1 {
-						m.selectedActionIndex++
-						m.adjustActionsScrollOffset()
 					}
 				}
 				return m, nil
@@ -651,31 +598,6 @@ func (m *AppModel) adjustPodScrollOffset() {
 	}
 }
 
-// adjustActionsScrollOffset adjusts the actions scroll offset based on selected action index (Story 4.1)
-func (m *AppModel) adjustActionsScrollOffset() {
-	// Calculate visible window size based on actions panel height
-	// Actions panel height is roughly half the available height (same as pod panel)
-	availableHeight := m.termHeight - HeaderHeight
-	actionsPanelHeight := availableHeight / 2
-	m.actionsPanelHeight = actionsPanelHeight // Store for rendering
-
-	// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
-	visibleHeight := actionsPanelHeight - 8
-	if visibleHeight < 1 {
-		visibleHeight = 5 // Minimum visible items
-	}
-
-	// Scroll down if selection below visible window
-	if m.selectedActionIndex >= m.actionsScrollOffset+visibleHeight {
-		m.actionsScrollOffset = m.selectedActionIndex - visibleHeight + 1
-	}
-
-	// Scroll up if selection above visible window
-	if m.selectedActionIndex < m.actionsScrollOffset {
-		m.actionsScrollOffset = m.selectedActionIndex
-	}
-}
-
 // adjustNamespaceViewport adjusts the namespace viewport with cursor centering (Story 6.1)
 func (m *AppModel) adjustNamespaceViewport(listLength int) {
 	// Calculate available height for namespace list
@@ -789,11 +711,9 @@ func (m *AppModel) getMatchIndices(namespaceName string) []int {
 	return nil
 }
 
-// handleActionExecution executes an action using tea.ExecProcess (Story 4.2, updated Story 5.1)
+// handleActionExecution executes an action using tea.ExecProcess (Story 6.2)
 func (m AppModel) handleActionExecution(action config.Action) (tea.Model, tea.Cmd) {
-	// After Story 5.1: Action.Type removed, now template-based commands
-	// Detect action type by analyzing Command template for kubectl exec pattern
-	// For now, only handle pod_exec-style commands (Story 5.2 adds local support)
+	// Story 6.2: ALL actions execute locally with template substitution
 
 	// Ensure we have a current context and namespace
 	if m.currentContext == nil {
@@ -811,15 +731,23 @@ func (m AppModel) handleActionExecution(action config.Action) (tea.Model, tea.Cm
 		return m, nil
 	}
 
-	// Prepare the kubectl exec command using executor
-	// This handles pod pattern matching and context box rendering
-	cmd, err := m.executor.PreparePodExec(action, *m.currentContext, m.currentNamespace, m.pods)
+	// Story 6.2: Check if pod is selected (cursor position = selection)
+	if m.selectedPodIndex == -1 {
+		m.errorMessage = "No pod selected. Press Tab to focus pod panel, then use arrow keys to select a pod."
+		return m, nil
+	}
+
+	// Get the selected pod
+	selectedPod := m.pods[m.selectedPodIndex]
+
+	// Prepare the local command using executor (Story 6.2: all actions are local now)
+	cmd, err := m.executor.PrepareLocal(action, *m.currentContext, m.currentNamespace, selectedPod, m.config.Kubeconfig)
 	if err != nil {
 		m.errorMessage = fmt.Sprintf("Action failed: %s", err.Error())
 		return m, nil
 	}
 
-	// Use tea.ExecProcess to suspend TUI and run kubectl exec
+	// Use tea.ExecProcess to suspend TUI and run command
 	// This gives full terminal control to the command
 	return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
 		return execFinishedMsg{err: err}
@@ -1197,12 +1125,9 @@ func (m AppModel) renderPodPanel(width, height int) string {
 		// Empty state
 		content = styles.PlaceholderStyle.Render("No pods in this namespace")
 	} else {
-		// Calculate visible window for scrolling (Story 3.3)
-		// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) + warning (if any)
+		// Calculate visible window for scrolling (Story 6.2)
+		// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
 		visibleHeight := height - 8
-		if m.defaultPodWarning != "" {
-			visibleHeight -= 2 // Extra space for warning
-		}
 		if visibleHeight < 1 {
 			visibleHeight = 5 // Minimum visible items
 		}
@@ -1213,41 +1138,29 @@ func (m AppModel) renderPodPanel(width, height int) string {
 			visiblePods = visiblePods[:visibleHeight]
 		}
 
-		// Render visible pods with markers (Story 3.2 + 3.3)
+		// Render visible pods (Story 6.2: manual selection only)
 		var podLines []string
 		for i, pod := range visiblePods {
 			actualIndex := i + m.podScrollOffset
 			statusStyle := m.getPodStatusStyle(pod.Status)
 			statusText := statusStyle.Render(pod.Status)
 
-			// Build markers
-			markers := ""
-
-			// Default pod marker (Story 3.2)
-			if actualIndex == m.defaultPodIndex {
-				markers += "★ "
-			} else {
-				markers += "  "
-			}
-
-			// Selection marker (Story 3.3)
+			// Build selection marker (Story 6.2: cursor position = pod selection)
+			var marker string
 			if actualIndex == m.selectedPodIndex {
-				markers += "> "
+				marker = "> "
 			} else {
-				markers += "  "
+				marker = "  "
 			}
 
 			// Apply styling
 			podName := pod.Name
 			if actualIndex == m.selectedPodIndex {
-				// Selected pod gets special highlighting (Story 3.3)
+				// Selected pod gets special highlighting (Story 6.2: cursor = selection)
 				podName = styles.SelectedPodStyle.Render(podName)
-			} else if actualIndex == m.defaultPodIndex {
-				// Default pod gets default styling (Story 3.2)
-				podName = styles.DefaultPodStyle.Render(podName)
 			}
 
-			line := fmt.Sprintf("%s%-12s %s", markers, statusText, podName)
+			line := fmt.Sprintf("%s%-12s %s", marker, statusText, podName)
 			podLines = append(podLines, line)
 		}
 		content = lipgloss.JoinVertical(lipgloss.Left, podLines...)
@@ -1263,14 +1176,8 @@ func (m AppModel) renderPodPanel(width, height int) string {
 			content = lipgloss.JoinVertical(lipgloss.Left, content, scrollDown)
 		}
 
-		// Add warning if no match (Story 3.2)
-		if m.defaultPodWarning != "" {
-			warningText := styles.WarningStyle.Render(fmt.Sprintf("⚠ %s", m.defaultPodWarning))
-			content = lipgloss.JoinVertical(lipgloss.Left, content, "", warningText)
-		}
-
-		// Add help text (Story 3.2 + 3.3)
-		helpText := styles.HelpTextStyle.Render("★ = Default pod | > = Selected")
+		// Add help text (Story 6.2)
+		helpText := styles.HelpTextStyle.Render("↑/↓: Navigate | Enter: Select | Tab: Switch panel")
 		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}
 
@@ -1306,7 +1213,7 @@ func (m AppModel) getPodStatusStyle(status string) lipgloss.Style {
 	}
 }
 
-// renderActionsPanel renders the actions panel with real data (Story 4.1)
+// renderActionsPanel renders the actions panel with multi-column layout (Story 6.2)
 func (m AppModel) renderActionsPanel(width, height int) string {
 	title := styles.PanelTitleStyle.Render("Actions")
 
@@ -1316,66 +1223,48 @@ func (m AppModel) renderActionsPanel(width, height int) string {
 		// Empty state
 		content = styles.PlaceholderStyle.Render("No actions configured")
 	} else {
-		// Calculate visible window for scrolling
-		// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
-		visibleHeight := height - 8
-		if visibleHeight < 1 {
-			visibleHeight = 5 // Minimum visible items
+		// Story 6.2: Multi-column layout (no scrolling, no focus)
+		// 2 columns for width < 80, 3 columns for width >= 80
+		columnCount := 2
+		if width >= 80 {
+			columnCount = 3
 		}
 
-		// After Story 5.1: Action.Type removed, no grouping needed
-		// Render all actions in single list
-		var actionLines []string
+		itemsPerColumn := (len(m.actions) + columnCount - 1) / columnCount
 
-		// Calculate visible range
-		visibleStart := m.actionsScrollOffset
-		visibleEnd := m.actionsScrollOffset + visibleHeight
-		if visibleEnd > len(m.actions) {
-			visibleEnd = len(m.actions)
-		}
-
-		// Render visible actions
-		for i := visibleStart; i < visibleEnd; i++ {
-			action := m.actions[i]
-			shortcut := styles.ShortcutStyle.Render(fmt.Sprintf("[%s]", action.Shortcut))
-
-			var line string
-			if i == m.selectedActionIndex {
-				actionName := styles.SelectedActionStyle.Render(action.Name)
-				line = fmt.Sprintf("%s %s", shortcut, actionName)
-			} else {
-				actionName := styles.ActionStyle.Render(action.Name)
-				line = fmt.Sprintf("%s %s", shortcut, actionName)
+		var columns []string
+		for col := 0; col < columnCount; col++ {
+			var columnLines []string
+			start := col * itemsPerColumn
+			end := start + itemsPerColumn
+			if end > len(m.actions) {
+				end = len(m.actions)
 			}
 
-			actionLines = append(actionLines, line)
+			for i := start; i < end; i++ {
+				action := m.actions[i]
+				shortcut := styles.ShortcutStyle.Render(fmt.Sprintf("[%s]", action.Shortcut))
+				actionName := styles.ActionStyle.Render(action.Name)
+				line := fmt.Sprintf("%s %s", shortcut, actionName)
+				columnLines = append(columnLines, line)
+			}
+
+			if len(columnLines) > 0 {
+				columns = append(columns, lipgloss.JoinVertical(lipgloss.Left, columnLines...))
+			}
 		}
 
-		content = lipgloss.JoinVertical(lipgloss.Left, actionLines...)
+		content = lipgloss.JoinHorizontal(lipgloss.Top, columns...)
 
-		// Show scroll indicators if needed
-		if m.actionsScrollOffset > 0 {
-			scrollUp := styles.HelpTextStyle.Render("↑ More above")
-			content = lipgloss.JoinVertical(lipgloss.Left, scrollUp, content)
-		}
-		if m.actionsScrollOffset+visibleHeight < len(m.actions) {
-			remaining := len(m.actions) - (m.actionsScrollOffset + visibleHeight)
-			scrollDown := styles.HelpTextStyle.Render(fmt.Sprintf("↓ %d more", remaining))
-			content = lipgloss.JoinVertical(lipgloss.Left, content, scrollDown)
-		}
-
-		// Add help text
-		helpText := styles.HelpTextStyle.Render("[key]: Execute action")
+		// Add help text (Story 6.2)
+		helpText := styles.HelpTextStyle.Render("[key]: Execute action (works from any panel)")
 		content = lipgloss.JoinVertical(lipgloss.Left, content, "", helpText)
 	}
 
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, title, "", content)
 
-	// Select border style based on focus
+	// Story 6.2: Actions panel is never focused (always use unfocused style)
 	borderStyle := styles.UnfocusedPanelBorderStyle
-	if m.focusedPanel == PanelActions {
-		borderStyle = styles.FocusedPanelBorderStyle
-	}
 
 	// Apply border style with calculated dimensions
 	contentWidth := width - 4   // 2 for border + 2*2 for padding

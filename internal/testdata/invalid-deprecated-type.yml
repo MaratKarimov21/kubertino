@@ -1,0 +1,9 @@
+version: "1.0"
+contexts:
+  - name: test
+    actions:
+      - name: "Console"
+        shortcut: "c"
+        type: "pod_exec"
+        command: "/bin/sh"
+

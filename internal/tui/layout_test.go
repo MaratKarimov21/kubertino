@@ -81,8 +81,7 @@ func TestRenderSplitLayout(t *testing.T) {
 	cfg := &config.Config{
 		Contexts: []config.Context{
 			{
-				Name:              "test-context",
-				DefaultPodPattern: ".*",
+				Name: "test-context",
 			},
 		},
 	}
