@@ -27,8 +27,8 @@ func TestDimensionCalculations(t *testing.T) {
 			termHeight:  24,
 			wantLeftW:   40,
 			wantRightW:  40,
-			wantTopH:    11, // (24-1)/2 = 11
-			wantBottomH: 12, // 23 - 11 = 12
+			wantTopH:    12, // (24-0)/2 = 12
+			wantBottomH: 12, // 24 - 12 = 12
 		},
 		{
 			name:        "large 120x40 terminal",
@@ -36,8 +36,8 @@ func TestDimensionCalculations(t *testing.T) {
 			termHeight:  40,
 			wantLeftW:   60,
 			wantRightW:  60,
-			wantTopH:    19, // (40-1)/2 = 19
-			wantBottomH: 20, // 39 - 19 = 20
+			wantTopH:    20, // (40-0)/2 = 20
+			wantBottomH: 20, // 40 - 20 = 20
 		},
 		{
 			name:        "small 80x30 terminal",
@@ -45,8 +45,8 @@ func TestDimensionCalculations(t *testing.T) {
 			termHeight:  30,
 			wantLeftW:   40,
 			wantRightW:  40,
-			wantTopH:    14, // (30-1)/2 = 14
-			wantBottomH: 15, // 29 - 14 = 15
+			wantTopH:    15, // (30-0)/2 = 15
+			wantBottomH: 15, // 30 - 15 = 15
 		},
 		{
 			name:        "wide 160x24 terminal",
@@ -54,8 +54,8 @@ func TestDimensionCalculations(t *testing.T) {
 			termHeight:  24,
 			wantLeftW:   80,
 			wantRightW:  80,
-			wantTopH:    11, // (24-1)/2 = 11
-			wantBottomH: 12, // 23 - 11 = 12
+			wantTopH:    12, // (24-0)/2 = 12
+			wantBottomH: 12, // 24 - 12 = 12
 		},
 	}
 
@@ -99,9 +99,6 @@ func TestRenderSplitLayout(t *testing.T) {
 	model.namespaces = []string{"default", "kube-system", "test-ns"}
 
 	output := model.renderSplitLayout()
-
-	// Verify header contains context name
-	assert.Contains(t, output, "Context: test-context", "header should contain context name")
 
 	// Verify panel titles appear
 	assert.Contains(t, output, "Pods", "should contain Pods panel title")
@@ -283,7 +280,6 @@ func TestViewModeSwitchesToSplitLayout(t *testing.T) {
 	output := model.View()
 
 	// Should contain elements from split layout
-	assert.Contains(t, output, "Context: test-context")
 	assert.Contains(t, output, "Pods")
 	assert.Contains(t, output, "Actions")
 }
@@ -402,7 +398,6 @@ func TestLayoutWithEmptyNamespaces(t *testing.T) {
 	output := model.renderSplitLayout()
 
 	// Should still render all panels
-	assert.Contains(t, output, "Context: test")
 	assert.Contains(t, output, "Pods")
 	assert.Contains(t, output, "Actions")
 }

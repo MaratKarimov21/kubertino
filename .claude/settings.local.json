@@ -16,7 +16,9 @@
       "Bash(go build:*)",
       "Bash(go vet:*)",
       "Bash(find:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Read(//Users/maratkarimov/.kubertino/**)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"sort"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -24,7 +23,7 @@ const (
 	// Terminal size constraints
 	MinTerminalWidth  = 80
 	MinTerminalHeight = 24
-	HeaderHeight      = 1
+	HeaderHeight      = 0 // No header displayed (Story 6.1)
 )
 
 // KubeAdapter is an interface for Kubernetes operations
@@ -439,7 +438,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Handle arrow keys based on focused panel (Story 3.3, 4.1)
 			if KeyMatches(msg, m.keys.Up) {
 				if m.focusedPanel == PanelNamespaces {
-					// Navigate namespace panel
+					// Navigate namespace panel with cursor centering (Story 6.1)
 					navList := m.namespaces
 					if m.searchMode && m.filteredNamespaces != nil {
 						navList = m.filteredNamespaces
@@ -448,18 +447,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(navList) > 0 {
 						m.selectedNamespaceIndex--
 						if m.selectedNamespaceIndex < 0 {
-							m.selectedNamespaceIndex = len(navList) - 1
 							// Wrap to end: adjust viewport to show last item
-							availableHeight := m.height - 4
-							if availableHeight < 1 {
-								availableHeight = 10
-							}
-							if len(navList) > availableHeight {
-								m.namespaceViewportStart = len(navList) - availableHeight
-							}
-						} else if m.selectedNamespaceIndex < m.namespaceViewportStart {
-							// Scroll up: selected item went above viewport
-							m.namespaceViewportStart = m.selectedNamespaceIndex
+							m.selectedNamespaceIndex = len(navList) - 1
+							// Story 6.1: Adjust viewport to show last item with proper centering
+							m.adjustNamespaceViewport(len(navList))
+						} else {
+							// Story 6.1: Implement cursor centering
+							m.adjustNamespaceViewport(len(navList))
 						}
 					}
 				} else if m.focusedPanel == PanelPods {
@@ -480,7 +474,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			if KeyMatches(msg, m.keys.Down) {
 				if m.focusedPanel == PanelNamespaces {
-					// Navigate namespace panel
+					// Navigate namespace panel with cursor centering (Story 6.1)
 					navList := m.namespaces
 					if m.searchMode && m.filteredNamespaces != nil {
 						navList = m.filteredNamespaces
@@ -489,20 +483,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(navList) > 0 {
 						m.selectedNamespaceIndex++
 						if m.selectedNamespaceIndex >= len(navList) {
-							m.selectedNamespaceIndex = 0
 							// Wrap to start: reset viewport to beginning
+							m.selectedNamespaceIndex = 0
 							m.namespaceViewportStart = 0
 						} else {
-							// Check if we need to scroll down
-							availableHeight := m.height - 4
-							if availableHeight < 1 {
-								availableHeight = 10
-							}
-							viewportEnd := m.namespaceViewportStart + availableHeight
-							if m.selectedNamespaceIndex >= viewportEnd {
-								// Scroll down: selected item went below viewport
-								m.namespaceViewportStart = m.selectedNamespaceIndex - availableHeight + 1
-							}
+							// Story 6.1: Implement cursor centering
+							m.adjustNamespaceViewport(len(navList))
 						}
 					}
 				} else if m.focusedPanel == PanelPods {
@@ -542,7 +528,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // sortNamespacesWithFavorites sorts namespaces with favorites first
-// Story 5.3: Both favorites and regular namespaces are sorted alphabetically
+// Story 6.1: Favorites preserve config order (not sorted), regular namespaces sorted alphabetically
 func (m AppModel) sortNamespacesWithFavorites(namespaces []string, favorites []string) []string {
 	// Create a set of favorites for quick lookup
 	favSet := make(map[string]bool)
@@ -560,11 +546,20 @@ func (m AppModel) sortNamespacesWithFavorites(namespaces []string, favorites []s
 		}
 	}
 
-	// Sort both sections alphabetically (Story 5.3)
-	sort.Strings(favs)
+	// Story 6.1: Preserve config order for favorites (don't sort)
+	// Sort favorites by their position in the original favorites slice
+	favOrder := make(map[string]int)
+	for i, fav := range favorites {
+		favOrder[fav] = i
+	}
+	sort.SliceStable(favs, func(i, j int) bool {
+		return favOrder[favs[i]] < favOrder[favs[j]]
+	})
+
+	// Sort only non-favorites alphabetically
 	sort.Strings(nonFavs)
 
-	// Combine: favorites first, then rest
+	// Combine: favorites first (in config order), then rest (alphabetically)
 	result := make([]string, 0, len(namespaces))
 	result = append(result, favs...)
 	result = append(result, nonFavs...)
@@ -681,17 +676,91 @@ func (m *AppModel) adjustActionsScrollOffset() {
 	}
 }
 
-// groupActionsByType groups actions by their type (Story 4.1)
-// Returns a map of type name to actions, preserving order
-// Note: After Story 5.1, Action.Type removed - this returns single group
-func (m AppModel) groupActionsByType() map[string][]config.Action {
-	// After Story 5.1: Action.Type field removed, all actions template-based
-	// Return single group "Actions" for now
-	result := make(map[string][]config.Action)
-	if len(m.actions) > 0 {
-		result["Actions"] = m.actions
+// adjustNamespaceViewport adjusts the namespace viewport with cursor centering (Story 6.1)
+func (m *AppModel) adjustNamespaceViewport(listLength int) {
+	// Calculate available height for namespace list
+	// CRITICAL: This must match the calculation in renderNamespacePanel!
+	// renderNamespacePanel passes: contentHeight = termHeight - 4 (border+padding)
+	// to renderNamespaceList
+
+	// Get the panel height (full terminal height for namespace panel)
+	panelHeight := m.termHeight
+	if panelHeight == 0 {
+		panelHeight = 24 // Default for tests
 	}
-	return result
+
+	// Subtract border+padding that renderNamespacePanel removes (4 lines total)
+	effectiveHeight := panelHeight - 4
+	if effectiveHeight < 1 {
+		effectiveHeight = 20 // Minimum
+	}
+
+	headerLines := 2
+	footerLines := 2
+	scrollIndicatorLines := 1
+	searchBoxLines := 0
+	if m.searchMode {
+		searchBoxLines = 2
+	}
+
+	reservedLines := headerLines + footerLines + searchBoxLines
+	availableHeight := effectiveHeight - reservedLines - scrollIndicatorLines
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+
+	// If list fits in viewport, no scrolling needed
+	if listLength <= availableHeight {
+		m.namespaceViewportStart = 0
+		return
+	}
+
+	// Story 6.1: Implement cursor centering with strict bounds checking
+	// Calculate middle position
+	middlePosition := availableHeight / 2
+
+	// Calculate the maximum valid viewport start position
+	maxViewportStart := listLength - availableHeight
+	if maxViewportStart < 0 {
+		maxViewportStart = 0
+	}
+
+	// Determine viewport position based on cursor position
+	if m.selectedNamespaceIndex < middlePosition {
+		// Near top: cursor moves freely, viewport stays at top
+		m.namespaceViewportStart = 0
+	} else if m.selectedNamespaceIndex >= listLength-middlePosition {
+		// Near bottom: lock viewport to show last items, cursor moves within bottom section
+		m.namespaceViewportStart = maxViewportStart
+	} else {
+		// Middle section: keep cursor centered in viewport
+		m.namespaceViewportStart = m.selectedNamespaceIndex - middlePosition
+	}
+
+	// Final safety check: absolutely ensure cursor is within viewport bounds
+	// This handles any edge cases where the above logic might fail
+	viewportEnd := m.namespaceViewportStart + availableHeight
+
+	// If cursor is above viewport, scroll up to show it
+	if m.selectedNamespaceIndex < m.namespaceViewportStart {
+		m.namespaceViewportStart = m.selectedNamespaceIndex
+	}
+
+	// If cursor is below viewport, scroll down to show it
+	// CRITICAL: cursor must be strictly within [start, end), not >= end
+	if m.selectedNamespaceIndex >= viewportEnd {
+		m.namespaceViewportStart = m.selectedNamespaceIndex - availableHeight + 1
+	}
+
+	// Ensure viewport doesn't go negative
+	if m.namespaceViewportStart < 0 {
+		m.namespaceViewportStart = 0
+	}
+
+	// Ensure viewport doesn't exceed maximum
+	if m.namespaceViewportStart > maxViewportStart {
+		m.namespaceViewportStart = maxViewportStart
+	}
 }
 
 // getMatchIndices returns the match indices for a given namespace in the current search
@@ -909,22 +978,6 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 			}
 		}
 
-		// Story 5.3: Track if we need to add separator between favorites and regular namespaces
-		needsSeparator := false
-		separatorAdded := false
-
-		// Story 5.3: Determine separator position (after last favorite in visible range)
-		lastFavoriteIndex := -1
-		if !m.searchMode {
-			// Only show separator in normal mode (favorites already sorted first)
-			for i := start; i < end; i++ {
-				if favSet[renderList[i]] {
-					lastFavoriteIndex = i
-					needsSeparator = true
-				}
-			}
-		}
-
 		// Render visible namespaces
 		for i := start; i < end; i++ {
 			ns := renderList[i]
@@ -933,10 +986,7 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 				prefix = "> "
 			}
 
-			// Add star for favorites
-			if favSet[ns] {
-				prefix += "★ "
-			}
+			// Story 6.1: No star icon for favorites (removed)
 
 			// Render namespace name with highlighting if in search mode
 			var renderedName string
@@ -946,18 +996,16 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 				renderedName = prefix + ns
 			}
 
-			// Apply selection styling
+			// Story 6.1: Apply selection or favorite styling
 			if i == m.selectedNamespaceIndex {
+				// Selected item gets selection style (highest priority)
 				s += styles.SelectedStyle.Render(renderedName) + "\n"
+			} else if favSet[ns] {
+				// Favorite namespace gets color highlight (Story 6.1)
+				s += styles.FavoriteNamespaceStyle.Render(renderedName) + "\n"
 			} else {
+				// Regular namespace - no special styling
 				s += renderedName + "\n"
-			}
-
-			// Story 5.3: Add separator after last favorite (only if favorites exist and we're not in search mode)
-			if needsSeparator && !separatorAdded && i == lastFavoriteIndex && lastFavoriteIndex < end-1 {
-				separator := strings.Repeat("─", 30)
-				s += styles.DimStyle.Render(separator) + "\n"
-				separatorAdded = true
 			}
 		}
 
@@ -1054,11 +1102,8 @@ func (m AppModel) renderContextList() string {
 
 // renderSplitLayout renders the split-pane layout with header, namespace, pods, and actions panels
 func (m AppModel) renderSplitLayout() string {
-	// Render header
-	header := m.renderHeader()
-
-	// Calculate dimensions
-	availableHeight := m.termHeight - HeaderHeight
+	// Calculate dimensions (no header, use full height)
+	availableHeight := m.termHeight
 	leftWidth := m.termWidth / 2
 	rightWidth := m.termWidth - leftWidth
 	rightTopHeight := availableHeight / 2
@@ -1072,11 +1117,8 @@ func (m AppModel) renderSplitLayout() string {
 	// Compose layout: combine right panels vertically
 	rightSide := lipgloss.JoinVertical(lipgloss.Left, podPanel, actionsPanel)
 
-	// Combine left and right panels horizontally
-	mainLayout := lipgloss.JoinHorizontal(lipgloss.Top, namespacePanel, rightSide)
-
-	// Add header at top
-	fullLayout := lipgloss.JoinVertical(lipgloss.Left, header, mainLayout)
+	// Combine left and right panels horizontally (no header)
+	fullLayout := lipgloss.JoinHorizontal(lipgloss.Top, namespacePanel, rightSide)
 
 	// Add error message at bottom if present (Story 4.2)
 	if m.errorMessage != "" {
@@ -1112,6 +1154,7 @@ func (m AppModel) renderNamespacePanel(width, height int) string {
 
 	// Calculate available height for content (what renderNamespaceList will receive)
 	// We need to account for what Lip Gloss will add
+	// CRITICAL: This must match the effectiveHeight used in adjustNamespaceViewport!
 	contentHeight := height - 4 // Subtract border (2) + padding (2)
 
 	// Get the namespace list content with correct panel height

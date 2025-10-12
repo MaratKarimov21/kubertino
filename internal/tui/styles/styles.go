@@ -153,4 +153,10 @@ var (
 	ShortcutStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("214")). // Orange/yellow
 			Bold(true)
+
+	// FavoriteNamespaceStyle is used for favorite namespace highlighting (Story 6.1)
+	// Yellow/gold color with bold - no icon, just color highlight
+	FavoriteNamespaceStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("226")). // Yellow/gold
+				Bold(true)
 )

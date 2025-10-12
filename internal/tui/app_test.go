@@ -797,10 +797,10 @@ func TestFavoritesIntegration(t *testing.T) {
 		// Verify favorites are set
 		assert.Equal(t, []string{"shared-ns", "common-ns"}, m.favoriteNamespaces)
 
-		// Verify namespaces sorted with favorites first
+		// Story 6.1: Verify namespaces preserve config order for favorites
 		require.Len(t, m.namespaces, 4)
-		assert.Equal(t, "common-ns", m.namespaces[0])
-		assert.Equal(t, "shared-ns", m.namespaces[1])
+		assert.Equal(t, "shared-ns", m.namespaces[0], "first favorite should match config order")
+		assert.Equal(t, "common-ns", m.namespaces[1], "second favorite should match config order")
 	})
 
 	t.Run("empty favorites list", func(t *testing.T) {
@@ -863,15 +863,15 @@ func TestSortNamespacesWithFavorites(t *testing.T) {
 	adapter := newMockAdapter()
 	model := NewAppModel(cfg, adapter)
 
-	t.Run("sorts favorites alphabetically", func(t *testing.T) {
+	t.Run("preserves favorites config order", func(t *testing.T) {
 		namespaces := []string{"zeta", "alpha", "beta"}
-		favorites := []string{"zeta", "alpha"}
+		favorites := []string{"zeta", "alpha"} // Config order: zeta first, alpha second
 
 		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
 
-		// First two should be favorites, sorted alphabetically
-		assert.Equal(t, "alpha", sorted[0])
-		assert.Equal(t, "zeta", sorted[1])
+		// Story 6.1: Favorites should preserve config order (NOT sorted alphabetically)
+		assert.Equal(t, "zeta", sorted[0], "first favorite should match config order")
+		assert.Equal(t, "alpha", sorted[1], "second favorite should match config order")
 		// Last should be regular namespace
 		assert.Equal(t, "beta", sorted[2])
 	})
@@ -902,17 +902,17 @@ func TestSortNamespacesWithFavorites(t *testing.T) {
 
 	t.Run("handles all favorites", func(t *testing.T) {
 		namespaces := []string{"zeta", "alpha", "beta"}
-		favorites := []string{"zeta", "alpha", "beta"}
+		favorites := []string{"zeta", "alpha", "beta"} // Config order
 
 		sorted := model.sortNamespacesWithFavorites(namespaces, favorites)
 
-		// All should be sorted as favorites
-		assert.Equal(t, []string{"alpha", "beta", "zeta"}, sorted)
+		// Story 6.1: All favorites should preserve config order
+		assert.Equal(t, []string{"zeta", "alpha", "beta"}, sorted, "all favorites should preserve config order")
 	})
 }
 
 func TestFavoritesDisplay(t *testing.T) {
-	t.Run("shows star marker for favorites", func(t *testing.T) {
+	t.Run("shows color highlighting for favorites", func(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
@@ -932,12 +932,12 @@ func TestFavoritesDisplay(t *testing.T) {
 
 		view := model.View()
 
-		// Should contain star marker for favorite
-		assert.Contains(t, view, "★", "should show star marker for favorite")
+		// Story 6.1: No star markers, just color highlighting (can't easily test color in TUI)
+		assert.NotContains(t, view, "★", "should NOT show star marker for favorite (Story 6.1)")
 		assert.Contains(t, view, "critical", "should show favorite namespace")
 	})
 
-	t.Run("shows separator when favorites exist", func(t *testing.T) {
+	t.Run("no separator when favorites exist", func(t *testing.T) {
 		cfg := &config.Config{
 			Version: "1.0",
 			Contexts: []config.Context{
@@ -955,13 +955,15 @@ func TestFavoritesDisplay(t *testing.T) {
 		model.namespaces = []string{"critical", "default"}
 		model.favoriteNamespaces = []string{"critical"}
 
+		// Story 6.1: Visual separator between favorites and regular namespaces was removed
+		// This test just verifies the functionality works without errors
+		// (We can't easily test for absence of separator since borders also use ─ characters)
 		view := model.View()
-
-		// Should contain separator
-		assert.Contains(t, view, "─", "should show separator line")
+		assert.Contains(t, view, "critical", "should show favorite namespace")
+		assert.Contains(t, view, "default", "should show regular namespace")
 	})
 
-	t.Run("no separator when favorites empty", func(t *testing.T) {
+	t.Run("no star marker when favorites empty", func(t *testing.T) {
 		cfg := &config.Config{
 			Version:  "1.0",
 			Contexts: []config.Context{{Name: "production", DefaultPodPattern: ".*"}},
@@ -978,7 +980,7 @@ func TestFavoritesDisplay(t *testing.T) {
 
 		view := model.View()
 
-		// Should not contain star or separator
+		// Story 6.1: No star markers
 		assert.NotContains(t, view, "★", "should not show star when no favorites")
 	})
 
@@ -1002,8 +1004,8 @@ func TestFavoritesDisplay(t *testing.T) {
 
 		view := model.View()
 
-		// Should show stars but no separator (no regular namespaces)
-		assert.Contains(t, view, "★", "should show star markers")
+		// Story 6.1: No star markers, just color highlighting
+		assert.NotContains(t, view, "★", "should NOT show star markers (Story 6.1)")
 	})
 }
 

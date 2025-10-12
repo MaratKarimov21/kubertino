@@ -63,6 +63,16 @@ Configuration supports:
 - Default pod patterns for action targeting
 - Custom keyboard shortcuts
 
+## Logs
+
+Kubertino writes application logs to `~/.kubertino/kubertino.log` to avoid interfering with the TUI display.
+
+You can view logs in real-time using:
+
+```bash
+tail -f ~/.kubertino/kubertino.log
+```
+
 ## Development
 
 ### Build
