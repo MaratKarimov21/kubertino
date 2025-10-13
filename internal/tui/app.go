@@ -1100,13 +1100,13 @@ func (m AppModel) renderNamespaceWithHighlight(namespace string, prefix string) 
 	return result
 }
 
-// renderContextList renders the full-screen context selection list
+// renderContextList renders the context selection in a centered bordered dialog (Story 7.1)
 func (m AppModel) renderContextList() string {
-	var s string
+	var content string
 
 	// Header
 	header := styles.TitleStyle.Render("Select Kubernetes Context")
-	s += header + "\n\n"
+	content += header + "\n\n"
 
 	// Context list
 	for i, ctx := range m.contexts {
@@ -1122,18 +1122,33 @@ func (m AppModel) renderContextList() string {
 
 		// Render context line with appropriate styling
 		if i == m.selectedContextIndex {
-			s += styles.SelectedStyle.Render(prefix+ctx.Name) + namespaceCount + "\n"
+			content += styles.SelectedStyle.Render(prefix+ctx.Name) + namespaceCount + "\n"
 		} else {
-			s += styles.NormalStyle.Render(prefix+ctx.Name) + namespaceCount + "\n"
+			content += styles.NormalStyle.Render(prefix+ctx.Name) + namespaceCount + "\n"
 		}
 	}
 
 	// Footer with key hints
-	s += "\n"
+	content += "\n"
 	footer := styles.DimStyle.Render("↑/↓ Navigate | Enter: Select | ESC/q: Quit")
-	s += footer
+	content += footer
 
-	return s
+	// Story 7.1: Apply border style (similar to executor context box)
+	dialogStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")). // Bright cyan
+		Padding(1, 2)
+
+	styledDialog := dialogStyle.Render(content)
+
+	// Story 7.1: Center the dialog on screen
+	return lipgloss.Place(
+		m.termWidth,
+		m.termHeight,
+		lipgloss.Center,
+		lipgloss.Center,
+		styledDialog,
+	)
 }
 
 // renderSplitLayout renders the split-pane layout with header, namespace, pods, and actions panels
