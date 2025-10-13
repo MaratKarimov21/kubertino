@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/maratkarimov/kubertino/internal/config"
 	"github.com/maratkarimov/kubertino/internal/k8s"
+	"github.com/maratkarimov/kubertino/internal/tui/components"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -48,11 +49,15 @@ func TestFocusCycling_Tab(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				focusedPanel:     tt.initialFocus,
-				pods:             tt.pods,
-				actions:          tt.actions,
-				selectedPodIndex: -1,
-				viewMode:         viewModeNamespaceView,
+				focusedPanel:      tt.initialFocus,
+				pods:              tt.pods,
+				actions:           tt.actions,
+				selectedPodIndex:  -1,
+				viewMode:          viewModeNamespaceView,
+				errorModal:        components.NewErrorModal(), // Story 6.3: Initialize components
+				namespacesSpinner: components.NewSpinner(),    // Story 6.3
+				podsSpinner:       components.NewSpinner(),    // Story 6.3
+				actionSpinner:     components.NewSpinner(),    // Story 6.3
 			}
 
 			msg := tea.KeyMsg{Type: tea.KeyTab}
@@ -104,11 +109,15 @@ func TestFocusCycling_ShiftTab(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				focusedPanel:     tt.initialFocus,
-				pods:             tt.pods,
-				actions:          tt.actions,
-				selectedPodIndex: -1,
-				viewMode:         viewModeNamespaceView,
+				focusedPanel:      tt.initialFocus,
+				pods:              tt.pods,
+				actions:           tt.actions,
+				selectedPodIndex:  -1,
+				viewMode:          viewModeNamespaceView,
+				errorModal:        components.NewErrorModal(), // Story 6.3
+				namespacesSpinner: components.NewSpinner(),    // Story 6.3
+				podsSpinner:       components.NewSpinner(),    // Story 6.3
+				actionSpinner:     components.NewSpinner(),    // Story 6.3
 			}
 
 			// Simulate Shift+Tab key
@@ -140,10 +149,14 @@ func TestFocusInitialization(t *testing.T) {
 // TestAutoSelectFirstPod tests that first pod is auto-selected when focusing pod panel (Story 3.3)
 func TestAutoSelectFirstPod(t *testing.T) {
 	model := AppModel{
-		focusedPanel:     PanelNamespaces,
-		pods:             []k8s.Pod{{Name: "pod-1", Status: "Running"}, {Name: "pod-2", Status: "Running"}},
-		selectedPodIndex: -1,
-		viewMode:         viewModeNamespaceView,
+		focusedPanel:      PanelNamespaces,
+		pods:              []k8s.Pod{{Name: "pod-1", Status: "Running"}, {Name: "pod-2", Status: "Running"}},
+		selectedPodIndex:  -1,
+		viewMode:          viewModeNamespaceView,
+		errorModal:        components.NewErrorModal(), // Story 6.3
+		namespacesSpinner: components.NewSpinner(),    // Story 6.3
+		podsSpinner:       components.NewSpinner(),    // Story 6.3
+		actionSpinner:     components.NewSpinner(),    // Story 6.3
 	}
 
 	// Tab to pod panel
@@ -158,10 +171,14 @@ func TestAutoSelectFirstPod(t *testing.T) {
 // TestNoAutoSelectWhenAlreadySelected tests that auto-select doesn't override existing selection (Story 3.3)
 func TestNoAutoSelectWhenAlreadySelected(t *testing.T) {
 	model := AppModel{
-		focusedPanel:     PanelNamespaces,
-		pods:             []k8s.Pod{{Name: "pod-1", Status: "Running"}, {Name: "pod-2", Status: "Running"}},
-		selectedPodIndex: 1, // Already selected
-		viewMode:         viewModeNamespaceView,
+		focusedPanel:      PanelNamespaces,
+		pods:              []k8s.Pod{{Name: "pod-1", Status: "Running"}, {Name: "pod-2", Status: "Running"}},
+		selectedPodIndex:  1, // Already selected
+		viewMode:          viewModeNamespaceView,
+		errorModal:        components.NewErrorModal(), // Story 6.3
+		namespacesSpinner: components.NewSpinner(),    // Story 6.3
+		podsSpinner:       components.NewSpinner(),    // Story 6.3
+		actionSpinner:     components.NewSpinner(),    // Story 6.3
 	}
 
 	// Tab to pod panel

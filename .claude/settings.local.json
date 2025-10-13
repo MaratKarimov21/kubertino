@@ -18,7 +18,8 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Read(//Users/maratkarimov/.kubertino/**)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(echo:*)"
     ],
     "deny": [],
     "ask": []

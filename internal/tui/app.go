@@ -11,6 +11,7 @@ import (
 	"github.com/maratkarimov/kubertino/internal/executor"
 	"github.com/maratkarimov/kubertino/internal/k8s"
 	"github.com/maratkarimov/kubertino/internal/search"
+	"github.com/maratkarimov/kubertino/internal/tui/components"
 	"github.com/maratkarimov/kubertino/internal/tui/styles"
 )
 
@@ -95,22 +96,31 @@ type AppModel struct {
 	actions []config.Action // Actions for current context
 	// Executor and error state (Story 4.2)
 	executor     *executor.Executor
-	errorMessage string // Error message to display in TUI
+	errorMessage string // Error message to display in TUI (deprecated in Story 6.3, use errorModal)
 	// Favorites state (Story 5.3)
 	favoriteNamespaces []string // Favorite namespaces for current context
+	// Error modal and spinners (Story 6.3)
+	errorModal        *components.ErrorModal
+	namespacesSpinner *components.Spinner
+	podsSpinner       *components.Spinner
+	actionSpinner     *components.Spinner
 }
 
 // NewAppModel creates a new AppModel with the provided configuration and KubeAdapter
 func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 	model := AppModel{
-		config:           cfg,
-		contexts:         cfg.Contexts,
-		keys:             DefaultKeyMap(),
-		kubeAdapter:      adapter,
-		focusedPanel:     PanelNamespaces,        // Story 3.3: Start with namespace panel focused
-		selectedPodIndex: -1,                     // Story 6.2: No pod selected initially (cursor = selection)
-		podScrollOffset:  0,                      // Story 3.3: No scroll offset initially
-		executor:         executor.NewExecutor(), // Story 6.2: Initialize executor (no adapter needed)
+		config:            cfg,
+		contexts:          cfg.Contexts,
+		keys:              DefaultKeyMap(),
+		kubeAdapter:       adapter,
+		focusedPanel:      PanelNamespaces,            // Story 3.3: Start with namespace panel focused
+		selectedPodIndex:  -1,                         // Story 6.2: No pod selected initially (cursor = selection)
+		podScrollOffset:   0,                          // Story 3.3: No scroll offset initially
+		executor:          executor.NewExecutor(),     // Story 6.2: Initialize executor (no adapter needed)
+		errorModal:        components.NewErrorModal(), // Story 6.3: Initialize error modal
+		namespacesSpinner: components.NewSpinner(),    // Story 6.3: Initialize namespace spinner
+		podsSpinner:       components.NewSpinner(),    // Story 6.3: Initialize pod spinner
+		actionSpinner:     components.NewSpinner(),    // Story 6.3: Initialize action spinner
 	}
 
 	// Initialize viewMode based on number of contexts
@@ -132,7 +142,9 @@ func NewAppModel(cfg *config.Config, adapter KubeAdapter) AppModel {
 func (m AppModel) Init() tea.Cmd {
 	// If single context auto-selected, fetch namespaces immediately
 	if m.viewMode == viewModeNamespaceView && m.currentContext != nil {
-		return m.fetchNamespacesCmd()
+		// Story 6.3: Start namespace spinner
+		m.namespacesSpinner.Start("Loading namespaces...")
+		return tea.Batch(m.fetchNamespacesCmd(), components.TickCmd())
 	}
 	return nil
 }
@@ -183,11 +195,32 @@ func (m AppModel) fetchPodsCmd() tea.Cmd {
 // nolint:gocyclo // Bubble Tea Update pattern inherently has high complexity due to message routing
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case components.SpinnerTickMsg:
+		// Story 6.3: Handle spinner animation tick
+		m.namespacesSpinner.Tick()
+		m.podsSpinner.Tick()
+		m.actionSpinner.Tick()
+
+		// Re-subscribe if any spinner is active
+		if m.namespacesSpinner.IsActive || m.podsSpinner.IsActive || m.actionSpinner.IsActive {
+			return m, components.TickCmd()
+		}
+		return m, nil
+
 	case namespaceFetchedMsg:
-		// Handle namespace fetch results
+		// Handle namespace fetch results (Story 6.3: use spinners and modal)
 		m.namespacesLoading = false
+		m.namespacesSpinner.Stop()
+
 		if msg.err != nil {
 			m.namespacesError = msg.err
+			// Story 6.3: Show error modal with retry capability
+			m.errorModal.ShowWithSuggestion(
+				msg.err.Error(),
+				"Fetch Namespaces",
+				"Check your network connection and cluster access",
+				func() tea.Cmd { return m.fetchNamespacesCmd() },
+			)
 			return m, nil
 		}
 		m.namespacesError = nil
@@ -209,10 +242,19 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case podsFetchedMsg:
-		// Handle pod fetch results
+		// Handle pod fetch results (Story 6.3: use spinners and modal)
 		m.podsLoading = false
+		m.podsSpinner.Stop()
+
 		if msg.err != nil {
 			m.podsError = msg.err
+			// Story 6.3: Show error modal with retry capability
+			m.errorModal.ShowWithSuggestion(
+				msg.err.Error(),
+				"Fetch Pods",
+				"Check your network connection and cluster access",
+				func() tea.Cmd { return m.fetchPodsCmd() },
+			)
 			return m, nil
 		}
 		m.podsError = nil
@@ -224,13 +266,55 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case execFinishedMsg:
-		// Handle command execution completion (Story 4.2)
+		// Handle command execution completion (Story 6.3: use modal for errors)
+		m.actionSpinner.Stop()
+
 		if msg.err != nil {
-			m.errorMessage = fmt.Sprintf("Command failed: %s", msg.err.Error())
+			m.errorModal.Show(
+				fmt.Sprintf("Command failed: %s", msg.err.Error()),
+				"Action Execution",
+				nil,
+			)
 		}
 		return m, nil
 
 	case tea.KeyMsg:
+		// Story 6.3: Handle error modal key presses first (blocks other input)
+		if m.errorModal.IsVisible {
+			// Bug Fix: Capture operation BEFORE HandleKeyPress clears it
+			operation := m.errorModal.Operation
+
+			handled, cmd := m.errorModal.HandleKeyPress(msg.String())
+			if handled {
+				// QA Fix: ESC should exit app, not just dismiss (user testing feedback)
+				if msg.String() == "esc" {
+					return m, tea.Quit
+				}
+				// Modal handled the key - start spinner if retrying
+				if cmd != nil && msg.String() == "enter" {
+					// QA Fix: Restart appropriate spinner based on operation being retried
+					// Bug Fix: Clear error state and set loading state when retrying
+					slog.Debug("retry operation", "operation", operation)
+					switch operation {
+					case "Fetch Namespaces":
+						slog.Debug("clearing namespace error and starting spinner")
+						m.namespacesError = nil
+						m.namespacesLoading = true
+						m.namespacesSpinner.Start("Loading namespaces...")
+					case "Fetch Pods":
+						slog.Debug("clearing pod error and starting spinner")
+						m.podsError = nil
+						m.podsLoading = true
+						m.podsSpinner.Start("Loading pods...")
+					case "Action Execution":
+						// Action spinner already handled in handleActionExecution
+					}
+					return m, tea.Batch(cmd, components.TickCmd())
+				}
+				return m, cmd
+			}
+		}
+
 		// Clear error message on any key press (Story 4.2)
 		if m.errorMessage != "" {
 			m.errorMessage = ""
@@ -291,7 +375,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.favoriteNamespaces = nil
 				// Load actions from context (Story 6.2)
 				m.actions = m.currentContext.Actions
-				return m, m.fetchNamespacesCmd()
+				// Story 6.3: Start namespace spinner
+				m.namespacesSpinner.Start("Loading namespaces...")
+				return m, tea.Batch(m.fetchNamespacesCmd(), components.TickCmd())
 			}
 		}
 
@@ -349,7 +435,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.podScrollOffset = 0
 						// QA Fix: Auto-switch focus to pods panel after namespace selection
 						m.focusedPanel = PanelPods
-						return m, m.fetchPodsCmd()
+						// Story 6.3: Start pod spinner
+						m.podsSpinner.Start("Loading pods...")
+						return m, tea.Batch(m.fetchPodsCmd(), components.TickCmd())
 					}
 					return m, nil
 				}
@@ -388,7 +476,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.podScrollOffset = 0
 					// QA Fix: Auto-switch focus to pods panel after namespace selection
 					m.focusedPanel = PanelPods
-					return m, m.fetchPodsCmd()
+					// Story 6.3: Start pod spinner
+					m.podsSpinner.Start("Loading pods...")
+					return m, tea.Batch(m.fetchPodsCmd(), components.TickCmd())
 				}
 				return m, nil
 			}
@@ -396,7 +486,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Navigation (works in both normal and search mode)
 			// Handle arrow keys based on focused panel (Story 6.2: Actions panel removed)
 			if KeyMatches(msg, m.keys.Up) {
-				if m.focusedPanel == PanelNamespaces {
+				switch m.focusedPanel {
+				case PanelNamespaces:
 					// Navigate namespace panel with cursor centering (Story 6.1)
 					navList := m.namespaces
 					if m.searchMode && m.filteredNamespaces != nil {
@@ -415,7 +506,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.adjustNamespaceViewport(len(navList))
 						}
 					}
-				} else if m.focusedPanel == PanelPods {
+				case PanelPods:
 					// Navigate pod panel (Story 3.3)
 					if len(m.pods) > 0 && m.selectedPodIndex > 0 {
 						m.selectedPodIndex--
@@ -426,7 +517,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if KeyMatches(msg, m.keys.Down) {
-				if m.focusedPanel == PanelNamespaces {
+				switch m.focusedPanel {
+				case PanelNamespaces:
 					// Navigate namespace panel with cursor centering (Story 6.1)
 					navList := m.namespaces
 					if m.searchMode && m.filteredNamespaces != nil {
@@ -444,7 +536,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.adjustNamespaceViewport(len(navList))
 						}
 					}
-				} else if m.focusedPanel == PanelPods {
+				case PanelPods:
 					// Navigate pod panel (Story 3.3)
 					if len(m.pods) > 0 && m.selectedPodIndex < len(m.pods)-1 {
 						m.selectedPodIndex++
@@ -461,6 +553,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.termWidth = msg.Width
 		m.termHeight = msg.Height
+
+		// Story 6.3: Update error modal size for proper centering
+		m.errorModal.SetSize(msg.Width, msg.Height)
 
 		// Check minimum size
 		if msg.Width < MinTerminalWidth || msg.Height < MinTerminalHeight {
@@ -715,25 +810,30 @@ func (m *AppModel) getMatchIndices(namespaceName string) []int {
 func (m AppModel) handleActionExecution(action config.Action) (tea.Model, tea.Cmd) {
 	// Story 6.2: ALL actions execute locally with template substitution
 
-	// Ensure we have a current context and namespace
+	// Ensure we have a current context and namespace (Story 6.3: use modal for errors)
 	if m.currentContext == nil {
-		m.errorMessage = "No context selected"
+		m.errorModal.Show("No context selected", "Execute Action", nil)
 		return m, nil
 	}
 
 	if m.currentNamespace == "" {
-		m.errorMessage = "No namespace selected"
+		m.errorModal.Show("No namespace selected", "Execute Action", nil)
 		return m, nil
 	}
 
 	if len(m.pods) == 0 {
-		m.errorMessage = "No pods available in namespace"
+		m.errorModal.Show("No pods available in namespace", "Execute Action", nil)
 		return m, nil
 	}
 
 	// Story 6.2: Check if pod is selected (cursor position = selection)
 	if m.selectedPodIndex == -1 {
-		m.errorMessage = "No pod selected. Press Tab to focus pod panel, then use arrow keys to select a pod."
+		m.errorModal.ShowWithSuggestion(
+			"No pod selected",
+			"Execute Action",
+			"Press Tab to focus pod panel, then use arrow keys to select a pod",
+			nil,
+		)
 		return m, nil
 	}
 
@@ -743,9 +843,12 @@ func (m AppModel) handleActionExecution(action config.Action) (tea.Model, tea.Cm
 	// Prepare the local command using executor (Story 6.2: all actions are local now)
 	cmd, err := m.executor.PrepareLocal(action, *m.currentContext, m.currentNamespace, selectedPod, m.config.Kubeconfig)
 	if err != nil {
-		m.errorMessage = fmt.Sprintf("Action failed: %s", err.Error())
+		m.errorModal.Show(fmt.Sprintf("Action failed: %s", err.Error()), "Execute Action", nil)
 		return m, nil
 	}
+
+	// Story 6.3: Start action spinner before executing
+	m.actionSpinner.Start(fmt.Sprintf("Executing %s...", action.Name))
 
 	// Use tea.ExecProcess to suspend TUI and run command
 	// This gives full terminal control to the command
@@ -829,9 +932,14 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 	}
 	s += header + "\n\n"
 
-	// Show loading indicator
+	// Show loading indicator (Story 6.3: use spinner)
 	if m.namespacesLoading {
-		s += styles.DimStyle.Render("Loading namespaces...") + "\n"
+		spinnerView := m.namespacesSpinner.View()
+		if spinnerView != "" {
+			s += spinnerView + "\n"
+		} else {
+			s += styles.DimStyle.Render("Loading namespaces...") + "\n"
+		}
 		s += "\n"
 		s += styles.DimStyle.Render("ESC/q: Quit")
 		return s
@@ -1048,17 +1156,15 @@ func (m AppModel) renderSplitLayout() string {
 	// Combine left and right panels horizontally (no header)
 	fullLayout := lipgloss.JoinHorizontal(lipgloss.Top, namespacePanel, rightSide)
 
-	// Add error message at bottom if present (Story 4.2)
-	if m.errorMessage != "" {
-		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15")).  // White text
-			Background(lipgloss.Color("196")). // Red background
-			Padding(0, 1).
-			Bold(true).
-			Width(m.termWidth)
+	// Story 6.3: Removed error bar at bottom - errors now shown via modal
 
-		errorBar := errorStyle.Render(m.errorMessage)
-		fullLayout = lipgloss.JoinVertical(lipgloss.Left, fullLayout, errorBar)
+	// Story 6.3: Render error modal overlay on top of everything
+	if m.errorModal.IsVisible {
+		modalView := m.errorModal.View()
+		if modalView != "" {
+			// Modal is rendered as an overlay - it will center itself
+			return modalView
+		}
 	}
 
 	return fullLayout
@@ -1111,9 +1217,14 @@ func (m AppModel) renderPodPanel(width, height int) string {
 
 	var content string
 
-	// Loading state
+	// Loading state (Story 6.3: use spinner)
 	if m.podsLoading {
-		content = styles.LoadingStyle.Render("Loading pods...")
+		spinnerView := m.podsSpinner.View()
+		if spinnerView != "" {
+			content = spinnerView
+		} else {
+			content = styles.LoadingStyle.Render("Loading pods...")
+		}
 	} else if m.podsError != nil {
 		// Error state
 		errorMsg := fmt.Sprintf("Error: %v", m.podsError)

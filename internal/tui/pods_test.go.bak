@@ -6,19 +6,14 @@ import (
 
 	"github.com/maratkarimov/kubertino/internal/config"
 	"github.com/maratkarimov/kubertino/internal/k8s"
-	"github.com/maratkarimov/kubertino/internal/tui/components"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRenderPodPanel_LoadingState(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		podsLoading:       true,
-		termWidth:         80,
-		termHeight:        24,
+		podsLoading: true,
+		termWidth:   80,
+		termHeight:  24,
 	}
 
 	output := model.renderPodPanel(40, 20)
@@ -30,13 +25,9 @@ func TestRenderPodPanel_LoadingState(t *testing.T) {
 
 func TestRenderPodPanel_ErrorState(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		podsError:         errors.New("permission denied"),
-		termWidth:         80,
-		termHeight:        24,
+		podsError:  errors.New("permission denied"),
+		termWidth:  80,
+		termHeight: 24,
 	}
 
 	output := model.renderPodPanel(40, 20)
@@ -49,13 +40,9 @@ func TestRenderPodPanel_ErrorState(t *testing.T) {
 
 func TestRenderPodPanel_NoNamespaceSelected(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentNamespace:  "",
-		termWidth:         80,
-		termHeight:        24,
+		currentNamespace: "",
+		termWidth:        80,
+		termHeight:       24,
 	}
 
 	output := model.renderPodPanel(40, 20)
@@ -67,14 +54,10 @@ func TestRenderPodPanel_NoNamespaceSelected(t *testing.T) {
 
 func TestRenderPodPanel_EmptyPodList(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentNamespace:  "default",
-		pods:              []k8s.Pod{},
-		termWidth:         80,
-		termHeight:        24,
+		currentNamespace: "default",
+		pods:             []k8s.Pod{},
+		termWidth:        80,
+		termHeight:       24,
 	}
 
 	output := model.renderPodPanel(40, 20)
@@ -86,11 +69,7 @@ func TestRenderPodPanel_EmptyPodList(t *testing.T) {
 
 func TestRenderPodPanel_WithPods(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentNamespace:  "default",
+		currentNamespace: "default",
 		pods: []k8s.Pod{
 			{Name: "pod-1", Status: "Running"},
 			{Name: "pod-2", Status: "Pending"},
@@ -118,11 +97,7 @@ func TestRenderPodPanel_WithPods(t *testing.T) {
 
 func TestRenderPodPanel_MultipleStatuses(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentNamespace:  "test-namespace",
+		currentNamespace: "test-namespace",
 		pods: []k8s.Pod{
 			{Name: "running-pod", Status: "Running"},
 			{Name: "pending-pod", Status: "Pending"},
@@ -180,13 +155,9 @@ func TestPodsFetchedMsg_Success(t *testing.T) {
 	}
 
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentContext:    ctx,
-		currentNamespace:  "default",
-		podsLoading:       true,
+		currentContext:   ctx,
+		currentNamespace: "default",
+		podsLoading:      true,
 	}
 
 	// Simulate successful pod fetch
@@ -218,13 +189,9 @@ func TestPodsFetchedMsg_Error(t *testing.T) {
 	}
 
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentContext:    ctx,
-		currentNamespace:  "default",
-		podsLoading:       true,
+		currentContext:   ctx,
+		currentNamespace: "default",
+		podsLoading:      true,
 	}
 
 	// Simulate failed pod fetch
@@ -255,12 +222,8 @@ func TestFetchPodsCmd(t *testing.T) {
 	}
 
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentContext:    ctx,
-		currentNamespace:  "default",
+		currentContext:   ctx,
+		currentNamespace: "default",
 	}
 
 	cmd := model.fetchPodsCmd()
@@ -278,10 +241,6 @@ func TestNamespaceSelection_TriggersPodFetch(t *testing.T) {
 	adapter := newMockAdapter()
 
 	model := AppModel{
-		errorModal:             components.NewErrorModal(),
-		namespacesSpinner:      components.NewSpinner(),
-		podsSpinner:            components.NewSpinner(),
-		actionSpinner:          components.NewSpinner(),
 		config:                 &config.Config{Contexts: []config.Context{*ctx}},
 		currentContext:         ctx,
 		kubeAdapter:            adapter,
@@ -317,10 +276,6 @@ func TestSearchModeNamespaceSelection_TriggersPodFetch(t *testing.T) {
 	adapter := newMockAdapter()
 
 	model := AppModel{
-		errorModal:             components.NewErrorModal(),
-		namespacesSpinner:      components.NewSpinner(),
-		podsSpinner:            components.NewSpinner(),
-		actionSpinner:          components.NewSpinner(),
 		config:                 &config.Config{Contexts: []config.Context{*ctx}},
 		currentContext:         ctx,
 		kubeAdapter:            adapter,
@@ -350,11 +305,7 @@ func TestSearchModeNamespaceSelection_TriggersPodFetch(t *testing.T) {
 
 func TestPodPanel_FormattingConsistency(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		currentNamespace:  "test",
+		currentNamespace: "test",
 		pods: []k8s.Pod{
 			{Name: "short", Status: "Running"},
 			{Name: "very-long-pod-name-that-exceeds-normal-length", Status: "Pending"},

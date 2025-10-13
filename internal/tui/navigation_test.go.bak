@@ -65,15 +65,11 @@ func TestPodNavigation_ArrowKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				errorModal:        components.NewErrorModal(),
-				namespacesSpinner: components.NewSpinner(),
-				podsSpinner:       components.NewSpinner(),
-				actionSpinner:     components.NewSpinner(),
-				focusedPanel:      tt.focusedPanel,
-				selectedPodIndex:  tt.initialIndex,
-				pods:              tt.pods,
-				viewMode:          viewModeNamespaceView,
-				keys:              DefaultKeyMap(), // Need keys for KeyMatches
+				focusedPanel:     tt.focusedPanel,
+				selectedPodIndex: tt.initialIndex,
+				pods:             tt.pods,
+				viewMode:         viewModeNamespaceView,
+				keys:             DefaultKeyMap(), // Need keys for KeyMatches
 			}
 
 			msg := tea.KeyMsg{Type: tt.keyPress}
@@ -134,17 +130,13 @@ func TestPodScrolling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				errorModal:        components.NewErrorModal(),
-				namespacesSpinner: components.NewSpinner(),
-				podsSpinner:       components.NewSpinner(),
-				actionSpinner:     components.NewSpinner(),
-				focusedPanel:      PanelPods,
-				selectedPodIndex:  tt.initialIndex,
-				podScrollOffset:   tt.initialOffset,
-				pods:              pods,
-				termHeight:        tt.termHeight,
-				viewMode:          viewModeNamespaceView,
-				keys:              DefaultKeyMap(), // Need keys for KeyMatches
+				focusedPanel:     PanelPods,
+				selectedPodIndex: tt.initialIndex,
+				podScrollOffset:  tt.initialOffset,
+				pods:             pods,
+				termHeight:       tt.termHeight,
+				viewMode:         viewModeNamespaceView,
+				keys:             DefaultKeyMap(), // Need keys for KeyMatches
 			}
 
 			msg := tea.KeyMsg{Type: tt.keyPress}
@@ -165,17 +157,13 @@ func TestPodStateReset(t *testing.T) {
 	}
 
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		viewMode:          viewModeNamespaceView,
-		kubeAdapter:       adapter,
-		namespaces:        []string{"default", "kube-system"},
-		selectedPodIndex:  5,
-		podScrollOffset:   10,
-		focusedPanel:      PanelNamespaces, // Must be on namespaces to select
-		keys:              DefaultKeyMap(), // Need keys for KeyMatches
+		viewMode:         viewModeNamespaceView,
+		kubeAdapter:      adapter,
+		namespaces:       []string{"default", "kube-system"},
+		selectedPodIndex: 5,
+		podScrollOffset:  10,
+		focusedPanel:     PanelNamespaces, // Must be on namespaces to select
+		keys:             DefaultKeyMap(), // Need keys for KeyMatches
 	}
 
 	// Select a namespace (triggers pod fetch and state reset)
@@ -190,15 +178,11 @@ func TestPodStateReset(t *testing.T) {
 // TestNavigationWithEmptyPodList tests navigation with empty pod list (Story 3.3)
 func TestNavigationWithEmptyPodList(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		focusedPanel:      PanelPods,
-		selectedPodIndex:  -1,
-		pods:              []k8s.Pod{}, // Empty
-		viewMode:          viewModeNamespaceView,
-		keys:              DefaultKeyMap(),
+		focusedPanel:     PanelPods,
+		selectedPodIndex: -1,
+		pods:             []k8s.Pod{}, // Empty
+		viewMode:         viewModeNamespaceView,
+		keys:             DefaultKeyMap(),
 	}
 
 	// Try to navigate down
@@ -219,15 +203,11 @@ func TestNavigationWithEmptyPodList(t *testing.T) {
 // TestNavigationWithSinglePod tests navigation with single pod (Story 3.3)
 func TestNavigationWithSinglePod(t *testing.T) {
 	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-		focusedPanel:      PanelPods,
-		selectedPodIndex:  0,
-		pods:              []k8s.Pod{{Name: "only-pod", Status: "Running"}},
-		viewMode:          viewModeNamespaceView,
-		keys:              DefaultKeyMap(),
+		focusedPanel:     PanelPods,
+		selectedPodIndex: 0,
+		pods:             []k8s.Pod{{Name: "only-pod", Status: "Running"}},
+		viewMode:         viewModeNamespaceView,
+		keys:             DefaultKeyMap(),
 	}
 
 	// Try to navigate down (should stay at 0)
@@ -247,12 +227,7 @@ func TestNavigationWithSinglePod(t *testing.T) {
 
 // Story 6.1: Test favorites config order preservation
 func TestFavoritesConfigOrder(t *testing.T) {
-	model := AppModel{
-		errorModal:        components.NewErrorModal(),
-		namespacesSpinner: components.NewSpinner(),
-		podsSpinner:       components.NewSpinner(),
-		actionSpinner:     components.NewSpinner(),
-	}
+	model := AppModel{}
 
 	// Favorites in specific non-alphabetical order
 	favorites := []string{"zebra-ns", "apple-ns", "banana-ns"}
@@ -307,10 +282,6 @@ func TestNamespaceCursorVisibilityDuringScroll(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				errorModal:             components.NewErrorModal(),
-				namespacesSpinner:      components.NewSpinner(),
-				podsSpinner:            components.NewSpinner(),
-				actionSpinner:          components.NewSpinner(),
 				focusedPanel:           PanelNamespaces,
 				selectedNamespaceIndex: tt.initialIndex,
 				namespaceViewportStart: tt.initialViewport,
@@ -396,10 +367,6 @@ func TestNamespaceCursorCentering(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				errorModal:             components.NewErrorModal(),
-				namespacesSpinner:      components.NewSpinner(),
-				podsSpinner:            components.NewSpinner(),
-				actionSpinner:          components.NewSpinner(),
 				focusedPanel:           PanelNamespaces,
 				selectedNamespaceIndex: tt.initialIndex,
 				namespaceViewportStart: 0,
@@ -446,10 +413,6 @@ func TestNamespaceCursorPersistenceOnFocusChange(t *testing.T) {
 	}
 
 	model := AppModel{
-		errorModal:             components.NewErrorModal(),
-		namespacesSpinner:      components.NewSpinner(),
-		podsSpinner:            components.NewSpinner(),
-		actionSpinner:          components.NewSpinner(),
 		viewMode:               viewModeNamespaceView,
 		kubeAdapter:            adapter,
 		namespaces:             []string{"default", "kube-system", "test-ns"},
@@ -504,10 +467,6 @@ func TestNamespaceCursorWrapAround(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := AppModel{
-				errorModal:             components.NewErrorModal(),
-				namespacesSpinner:      components.NewSpinner(),
-				podsSpinner:            components.NewSpinner(),
-				actionSpinner:          components.NewSpinner(),
 				focusedPanel:           PanelNamespaces,
 				selectedNamespaceIndex: tt.initialIndex,
 				namespaceViewportStart: tt.initialViewport,
@@ -531,10 +490,6 @@ func TestNamespaceCenteringShortList(t *testing.T) {
 	namespaces := []string{"ns-1", "ns-2", "ns-3"}
 
 	model := AppModel{
-		errorModal:             components.NewErrorModal(),
-		namespacesSpinner:      components.NewSpinner(),
-		podsSpinner:            components.NewSpinner(),
-		actionSpinner:          components.NewSpinner(),
 		focusedPanel:           PanelNamespaces,
 		selectedNamespaceIndex: 0,
 		namespaceViewportStart: 0,
@@ -570,10 +525,6 @@ func TestNamespaceLargeListBottomNavigation(t *testing.T) {
 	termHeight := 45
 
 	model := AppModel{
-		errorModal:             components.NewErrorModal(),
-		namespacesSpinner:      components.NewSpinner(),
-		podsSpinner:            components.NewSpinner(),
-		actionSpinner:          components.NewSpinner(),
 		focusedPanel:           PanelNamespaces,
 		selectedNamespaceIndex: 0,
 		namespaceViewportStart: 0,

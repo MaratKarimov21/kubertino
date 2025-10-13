@@ -1,0 +1,743 @@
+# Story 6.3: Error Handling & Loading States
+
+## Status
+
+Approved
+
+## Story
+
+**As a** user,
+**I want** clear error feedback via modal dialogs and loading indicators,
+**so that** I understand application state and can recover from errors easily.
+
+## Acceptance Criteria
+
+1. **Remove Bottom Log Panel:**
+   - Completely remove any log/status display at bottom of screen
+   - Logs should only go to log file (`~/.kubertino/logs/kubertino.log`)
+   - Screen real estate reclaimed for main panels
+
+2. **Error Modal Dialog:**
+   - When any error occurs, display modal dialog overlay on top of all panels
+   - Modal has red border and red-themed styling
+   - Modal shows: error message, affected operation, suggestion (if any)
+   - Modal displays "[Press Enter to retry]" message
+   - Pressing Enter re-executes the failed operation
+   - Pressing ESC dismisses modal and returns to previous state
+   - Modal blocks all other input while displayed
+
+3. **Loading Spinners:**
+   - Display spinner indicator when fetching namespaces (on context switch)
+   - Display spinner indicator when fetching pods (on namespace selection)
+   - Display spinner indicator during action execution (before command takes over terminal)
+   - Spinner shown in relevant panel (namespace panel during NS fetch, pod panel during pod fetch)
+   - Spinner styling consistent across all panels
+
+## Tasks / Subtasks
+
+- [x] Remove bottom log panel from TUI layout (AC: 1)
+  - [ ] Read current app layout in `internal/tui/app.go` to locate log panel rendering
+  - [ ] Remove any log panel state fields from AppModel struct
+  - [ ] Remove log panel rendering code from `View()` method
+  - [ ] Update layout calculations to reclaim screen space
+  - [ ] Verify logs still write to file `~/.kubertino/logs/kubertino.log`
+  - [ ] Update layout to distribute reclaimed space among main panels
+
+- [ ] Create Error Modal component (AC: 2)
+  - [ ] Create new file `internal/tui/components/modal.go`
+  - [ ] Implement ErrorModal struct with fields: Message, Operation, Suggestion, RetryFunc, IsVisible
+  - [ ] Implement `Show(message, operation string, retryFunc func() tea.Cmd)` method
+  - [ ] Implement `Hide()` method to dismiss modal
+  - [ ] Implement `View() string` method to render modal overlay
+  - [ ] Use Lip Gloss for red border styling (BorderForeground with red color)
+  - [ ] Center modal overlay using terminal dimensions (lipgloss.Place with Center alignment)
+  - [ ] Add footer text: "[Press Enter to retry] [Press ESC to dismiss]"
+  - [ ] Ensure modal renders on top of all panels in z-order
+
+- [ ] Integrate Error Modal into TUI app (AC: 2)
+  - [ ] Add `errorModal ErrorModal` field to AppModel struct in `internal/tui/app.go`
+  - [ ] Create helper method `showError(msg, operation string, retryFunc func() tea.Cmd) AppModel`
+  - [ ] Update `Update()` method to handle Enter key when modal visible:
+    - Hide modal
+    - Execute RetryFunc if not nil
+  - [ ] Update `Update()` method to handle ESC key when modal visible:
+    - Hide modal
+    - Return to previous state
+  - [ ] Update `Update()` method to block all other input when modal visible
+  - [ ] Update `View()` method to render modal overlay on top of main view when visible
+  - [ ] Replace all inline error displays with modal triggers:
+    - Config loading errors → error modal
+    - Namespace fetch errors → error modal with retry func
+    - Pod fetch errors → error modal with retry func
+    - Action execution errors → error modal
+
+- [ ] Create Spinner component (AC: 3)
+  - [ ] Create new file `internal/tui/components/spinner.go`
+  - [ ] Implement Spinner struct with fields: FrameIndex, Message, IsActive, Frames
+  - [ ] Define spinner animation frames (e.g., dots: "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+  - [ ] Implement `Start(message string)` method to begin animation
+  - [ ] Implement `Stop()` method to stop animation
+  - [ ] Implement `Tick()` method to advance frame index
+  - [ ] Implement `View() string` method to render current frame with message
+  - [ ] Use consistent styling across all spinner instances
+
+- [ ] Integrate Spinners into namespace panel (AC: 3)
+  - [ ] Read current namespace panel in `internal/tui/app.go` (namespace rendering code)
+  - [ ] Add `namespacesSpinner Spinner` field to AppModel struct
+  - [ ] Start spinner when initiating namespace fetch (before kubectl call)
+  - [ ] Stop spinner when namespace fetch completes (success or error)
+  - [ ] Update namespace panel View() to show spinner when active
+  - [ ] Position spinner in namespace panel (replace empty list message)
+  - [ ] Use Bubble Tea tick messages for spinner animation (time.Tick subscription)
+
+- [ ] Integrate Spinners into pod panel (AC: 3)
+  - [ ] Read current pod panel rendering in `internal/tui/app.go`
+  - [ ] Add `podsSpinner Spinner` field to AppModel struct
+  - [ ] Start spinner when initiating pod fetch (on namespace selection)
+  - [ ] Stop spinner when pod fetch completes (success or error)
+  - [ ] Update pod panel View() to show spinner when active
+  - [ ] Position spinner in pod panel (replace "No pods" message)
+
+- [ ] Add spinner for action execution (AC: 3)
+  - [ ] Add `actionSpinner Spinner` field to AppModel struct
+  - [ ] Start spinner when action shortcut pressed (before executor call)
+  - [ ] Stop spinner when action execution begins (when terminal yields control)
+  - [ ] Display spinner with message "Executing {{action.Name}}..."
+  - [ ] Position spinner overlay or in actions panel area
+
+- [ ] Update error handling flow throughout TUI (AC: 2)
+  - [ ] Identify all error scenarios in TUI:
+    - Config validation errors
+    - Context switching errors
+    - Namespace fetch errors
+    - Pod fetch errors
+    - Action execution preparation errors
+  - [ ] Replace inline error displays with error modal triggers
+  - [ ] Provide appropriate retry functions for recoverable errors
+  - [ ] Add helpful suggestions for common error scenarios (permission denied, timeout, kubectl not found)
+  - [ ] Test error modal with various error types
+
+- [ ] Add comprehensive unit tests (All ACs)
+  - [ ] Test ErrorModal component:
+    - Test Show() sets correct fields and IsVisible = true
+    - Test Hide() sets IsVisible = false
+    - Test View() returns correctly formatted modal string
+    - Test RetryFunc execution on Enter key
+    - Test modal dismissal on ESC key
+  - [ ] Test Spinner component:
+    - Test Start() activates spinner with message
+    - Test Stop() deactivates spinner
+    - Test Tick() advances frame index correctly
+    - Test View() returns correctly formatted spinner string
+    - Test frame wrapping (last frame → first frame)
+  - [ ] Test TUI integration:
+    - Test modal blocks input when visible
+    - Test spinner displays during async operations
+    - Test error handling triggers modal correctly
+    - Test retry functionality executes correct operation
+  - [ ] Test layout changes:
+    - Test bottom log panel removed from layout
+    - Test screen space reclaimed for main panels
+    - Test modal renders on top of all panels
+
+## Dev Notes
+
+### Previous Story Insights
+
+[Source: Story 6.2 Dev Agent Record]
+- TUI app structure in `internal/tui/app.go` with AppModel as main Bubble Tea model
+- Panel focus management via Tab/Shift+Tab (lines 332-371)
+- Update() method handles all keyboard input and message routing
+- View() method renders complete UI layout
+- Bubble Tea message pattern used for async operations (namespace fetch, pod fetch)
+
+### Architecture Context
+
+[Source: docs/architecture.md]
+
+#### Error Modal Component Specification
+
+[Source: architecture.md#Error Modal Component (lines 345-364)]
+
+**Responsibility:** Display error messages with retry capability
+
+**Key Interfaces:**
+- `Show(message, operation string, retryFunc func() tea.Cmd)` - Display error modal
+- `Hide()` - Dismiss modal
+- `View() string` - Render modal overlay
+
+**State:**
+- Error message
+- Failed operation context
+- Retry callback function
+- Visibility flag
+
+**Technical Notes:**
+- Uses Lip Gloss for red border styling
+- Centered overlay using terminal dimensions
+- Blocks input propagation to underlying panels
+
+**Implementation Pattern:**
+
+```go
+type ErrorModal struct {
+    Message     string
+    Operation   string
+    Suggestion  string
+    RetryFunc   func() tea.Cmd
+    IsVisible   bool
+}
+
+// In main app model
+type AppModel struct {
+    // ... existing fields
+    errorModal ErrorModal
+}
+
+// When error occurs
+func (m AppModel) showError(msg, operation string, retryFunc func() tea.Cmd) AppModel {
+    m.errorModal = ErrorModal{
+        Message:    msg,
+        Operation:  operation,
+        RetryFunc:  retryFunc,
+        IsVisible:  true,
+    }
+    return m
+}
+
+// In Update function
+case key.Matches(msg, m.keys.Enter):
+    if m.errorModal.IsVisible {
+        m.errorModal.IsVisible = false
+        if m.errorModal.RetryFunc != nil {
+            return m, m.errorModal.RetryFunc()
+        }
+    }
+```
+
+**Modal Styling:**
+- Red border using Lip Gloss border styles
+- Centered overlay on top of main view
+- Clear "[Press Enter to retry] [Press ESC to dismiss]" footer
+- Blocks all other keyboard input while visible
+
+[Source: architecture.md#Error Handling Strategy (lines 772-776)]
+
+---
+
+#### Spinner Component Specification
+
+[Source: architecture.md#Spinner Component (lines 366-385)]
+
+**Responsibility:** Display loading indicators during async operations
+
+**Key Interfaces:**
+- `Start(message string)` - Begin spinner animation
+- `Stop()` - Stop spinner
+- `View() string` - Render current spinner frame
+
+**State:**
+- Animation frame index
+- Loading message
+- Active/inactive flag
+
+**Technical Notes:**
+- Uses Bubble Tea tick messages for animation
+- Consistent spinner style across all panels (e.g., dots, circle, etc.)
+- Positioned within panel being loaded (namespace panel, pod panel)
+
+**Suggested Spinner Frames:**
+
+```go
+// Unicode spinner frames (dots pattern)
+frames := []string{
+    "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏",
+}
+
+// Or simpler ASCII spinner
+frames := []string{
+    "|", "/", "-", "\\",
+}
+```
+
+**Integration Pattern:**
+
+```go
+type Spinner struct {
+    FrameIndex int
+    Message    string
+    IsActive   bool
+    Frames     []string
+}
+
+func (s *Spinner) Start(message string) {
+    s.Message = message
+    s.IsActive = true
+    s.FrameIndex = 0
+}
+
+func (s *Spinner) Stop() {
+    s.IsActive = false
+}
+
+func (s *Spinner) Tick() {
+    if s.IsActive {
+        s.FrameIndex = (s.FrameIndex + 1) % len(s.Frames)
+    }
+}
+
+func (s Spinner) View() string {
+    if !s.IsActive {
+        return ""
+    }
+    frame := s.Frames[s.FrameIndex]
+    return fmt.Sprintf("%s %s", frame, s.Message)
+}
+```
+
+**Bubble Tea Tick Integration:**
+
+```go
+// In Init() or when starting async operation
+return func() tea.Msg {
+    time.Sleep(100 * time.Millisecond)
+    return spinnerTickMsg{}
+}
+
+// In Update()
+case spinnerTickMsg:
+    m.namespacesSpinner.Tick()
+    m.podsSpinner.Tick()
+    m.actionSpinner.Tick()
+
+    // Re-subscribe if any spinner active
+    if m.namespacesSpinner.IsActive || m.podsSpinner.IsActive || m.actionSpinner.IsActive {
+        return m, func() tea.Msg {
+            time.Sleep(100 * time.Millisecond)
+            return spinnerTickMsg{}
+        }
+    }
+    return m, nil
+```
+
+---
+
+#### Error Handling Strategy
+
+[Source: architecture.md#Error Handling Strategy (lines 657-793)]
+
+**Logging Standards:**
+
+**Library:** Go stdlib `log/slog` (structured logging)
+
+**Format:** JSON for file logging, human-readable for stderr
+
+**Levels:**
+- DEBUG: Detailed trace information
+- INFO: General informational messages
+- WARN: Warning messages (non-blocking issues)
+- ERROR: Error messages (operations failed)
+
+**Log location:** `~/.kubertino/logs/kubertino.log`
+
+**Required Context:**
+- Timestamp (automatic)
+- Log level
+- Context (which operation/component)
+- Error details
+
+**Example:**
+```go
+slog.Error("failed to fetch namespaces",
+    "context", ctx.Name,
+    "error", err)
+```
+
+**Error Handling Patterns:**
+
+[Source: architecture.md#Error Handling Patterns (lines 692-725)]
+
+**Configuration Errors:**
+```go
+// Clear user-facing message with fix suggestions
+if err := config.Validate(); err != nil {
+    return fmt.Errorf("configuration validation failed: %w\n\nCheck ~/.kubertino.yml:\n%s", err, err.Hints())
+}
+```
+
+**Kubernetes Operation Errors:**
+```go
+// Distinguish between different failure modes
+namespaces, err := k8s.GetNamespaces(ctx)
+if err != nil {
+    if errors.Is(err, ErrPermissionDenied) {
+        return fmt.Errorf("RBAC permission denied for context %s: check your cluster access", ctx)
+    }
+    if errors.Is(err, ErrTimeout) {
+        return fmt.Errorf("timeout connecting to cluster %s: check network/VPN", ctx)
+    }
+    return fmt.Errorf("failed to fetch namespaces: %w", err)
+}
+```
+
+**Action Execution Errors:**
+```go
+// Non-blocking errors return to TUI
+if err := executor.Execute(action); err != nil {
+    // Show error in TUI, don't exit application
+    model.err = fmt.Errorf("action '%s' failed: %w", action.Name, err)
+    return model, nil
+}
+```
+
+**Error Types:**
+
+[Source: architecture.md#Error Types (lines 777-792)]
+
+```go
+var (
+    ErrConfigNotFound     = errors.New("config file not found")
+    ErrInvalidConfig      = errors.New("invalid configuration")
+    ErrContextNotFound    = errors.New("context not found")
+    ErrNamespaceNotFound  = errors.New("namespace not found")
+    ErrPodNotFound        = errors.New("pod not found")
+    ErrPermissionDenied   = errors.New("permission denied")
+    ErrTimeout            = errors.New("operation timeout")
+    ErrKubectlNotFound    = errors.New("kubectl not found in PATH")
+)
+```
+
+---
+
+#### TUI Structure
+
+[Source: architecture.md#TUI Controller (lines 282-301)]
+
+**Responsibility:** Main Bubble Tea model, coordinates panel models
+
+**Key Interfaces:**
+- `Init() tea.Cmd` - Bubble Tea initialization
+- `Update(tea.Msg) (tea.Model, tea.Cmd)` - Handle messages
+- `View() string` - Render complete UI
+
+**Dependencies:**
+- Bubble Tea framework
+- Panel models (namespace, pod, action)
+- Kubernetes adapter
+
+**Implementation Notes:**
+- Composes three panel models
+- Routes keyboard events to focused panel
+- Manages global state (context, namespace selection)
+- Handles panel focus switching (Tab key)
+
+---
+
+#### Styling
+
+[Source: architecture.md#Tech Stack (line 108)]
+
+**Styling Library:** Lip Gloss 0.9+
+- Official companion to Bubble Tea
+- Declarative styles
+- Border styles, colors, alignment, positioning
+
+**Modal Styling Example:**
+
+```go
+import "github.com/charmbracelet/lipgloss"
+
+var (
+    errorModalStyle = lipgloss.NewStyle().
+        BorderStyle(lipgloss.RoundedBorder()).
+        BorderForeground(lipgloss.Color("9")). // Red
+        Padding(1, 2).
+        Width(60)
+
+    modalTitleStyle = lipgloss.NewStyle().
+        Foreground(lipgloss.Color("9")). // Red
+        Bold(true)
+)
+
+func (e ErrorModal) View() string {
+    if !e.IsVisible {
+        return ""
+    }
+
+    content := fmt.Sprintf(
+        "%s\n\n%s\n\n%s\n\n%s",
+        modalTitleStyle.Render("Error: " + e.Operation),
+        e.Message,
+        e.Suggestion,
+        "[Press Enter to retry] [Press ESC to dismiss]",
+    )
+
+    modal := errorModalStyle.Render(content)
+
+    // Center modal on screen
+    return lipgloss.Place(
+        termWidth, termHeight,
+        lipgloss.Center, lipgloss.Center,
+        modal,
+    )
+}
+```
+
+---
+
+### File Locations
+
+[Source: architecture.md#Source Tree (lines 509-568)]
+
+**Files to create:**
+
+1. **`internal/tui/components/modal.go`** - Error modal component
+   - ErrorModal struct
+   - Show(), Hide(), View() methods
+   - Red border styling with Lip Gloss
+
+2. **`internal/tui/components/spinner.go`** - Loading spinner component
+   - Spinner struct
+   - Start(), Stop(), Tick(), View() methods
+   - Unicode or ASCII animation frames
+
+**Files to modify:**
+
+1. **`internal/tui/app.go`** - Main TUI application
+   - Add errorModal field to AppModel
+   - Add spinner fields (namespacesSpinner, podsSpinner, actionSpinner)
+   - Update Update() method to handle modal input (Enter, ESC)
+   - Update Update() method to handle spinner tick messages
+   - Update View() method to render modal overlay and spinners
+   - Replace inline error displays with modal triggers
+   - Remove bottom log panel rendering
+   - Update layout calculations
+
+2. **`internal/tui/styles/styles.go`** - Add modal and spinner styles
+   - ErrorModalStyle with red border
+   - ModalTitleStyle with red foreground
+   - SpinnerStyle for consistent spinner appearance
+
+**Test files to create:**
+
+1. **`internal/tui/components/modal_test.go`** - Modal component tests
+2. **`internal/tui/components/spinner_test.go`** - Spinner component tests
+3. **`internal/tui/app_error_test.go`** - Error handling integration tests
+
+---
+
+### Bubble Tea Message Pattern
+
+**Async Operations with Messages:**
+
+Bubble Tea uses messages for async operations. When an operation completes, it sends a message back to Update().
+
+**Namespace Fetch Example:**
+
+```go
+// Message type
+type namespacesFetchedMsg struct {
+    namespaces []string
+    err        error
+}
+
+// Command to fetch namespaces
+func fetchNamespaces(ctx string, adapter *k8s.Adapter) tea.Cmd {
+    return func() tea.Msg {
+        namespaces, err := adapter.GetNamespaces(ctx)
+        return namespacesFetchedMsg{namespaces, err}
+    }
+}
+
+// In Update() when namespace fetch initiated
+m.namespacesSpinner.Start("Loading namespaces...")
+return m, fetchNamespaces(m.currentContext.Name, m.k8sAdapter)
+
+// In Update() when namespace fetch completes
+case namespacesFetchedMsg:
+    m.namespacesSpinner.Stop()
+
+    if msg.err != nil {
+        // Show error modal with retry
+        return m.showError(
+            msg.err.Error(),
+            "Fetch Namespaces",
+            func() tea.Cmd { return fetchNamespaces(m.currentContext.Name, m.k8sAdapter) },
+        ), nil
+    }
+
+    m.namespaces = msg.namespaces
+    return m, nil
+```
+
+**Pod Fetch Example:**
+
+```go
+// Message type
+type podsFetchedMsg struct {
+    pods []Pod
+    err  error
+}
+
+// Command to fetch pods
+func fetchPods(ctx, namespace string, adapter *k8s.Adapter) tea.Cmd {
+    return func() tea.Msg {
+        pods, err := adapter.GetPods(ctx, namespace)
+        return podsFetchedMsg{pods, err}
+    }
+}
+
+// In Update() when pod fetch initiated (on namespace selection)
+m.podsSpinner.Start("Loading pods...")
+return m, fetchPods(m.currentContext.Name, m.currentNamespace, m.k8sAdapter)
+
+// In Update() when pod fetch completes
+case podsFetchedMsg:
+    m.podsSpinner.Stop()
+
+    if msg.err != nil {
+        // Show error modal with retry
+        return m.showError(
+            msg.err.Error(),
+            "Fetch Pods",
+            func() tea.Cmd { return fetchPods(m.currentContext.Name, m.currentNamespace, m.k8sAdapter) },
+        ), nil
+    }
+
+    m.pods = msg.pods
+    return m, nil
+```
+
+---
+
+### Retry Functionality
+
+When showing error modal, provide retry function for recoverable operations:
+
+**Recoverable Operations (provide RetryFunc):**
+- Namespace fetch errors (network timeout, permission denied)
+- Pod fetch errors (network timeout, permission denied)
+- Action execution preparation errors
+
+**Non-Recoverable Operations (no RetryFunc):**
+- Config validation errors (user must fix config file)
+- Invalid action execution (missing pod, invalid template)
+
+**Implementation:**
+
+```go
+// Recoverable error - provide retry function
+m.errorModal = ErrorModal{
+    Message:    "Failed to fetch namespaces: " + err.Error(),
+    Operation:  "Fetch Namespaces",
+    Suggestion: "Check your network connection and cluster access",
+    RetryFunc:  func() tea.Cmd { return fetchNamespaces(m.currentContext.Name, m.k8sAdapter) },
+    IsVisible:  true,
+}
+
+// Non-recoverable error - no retry function
+m.errorModal = ErrorModal{
+    Message:    "Invalid configuration: " + err.Error(),
+    Operation:  "Load Configuration",
+    Suggestion: "Fix ~/.kubertino.yml and restart application",
+    RetryFunc:  nil, // No retry - user must fix config
+    IsVisible:  true,
+}
+```
+
+---
+
+### Testing
+
+[Source: architecture.md#Test Strategy and Standards (lines 835-975)]
+
+**Testing Framework:** Go stdlib `testing` package
+
+**File Convention:** `filename_test.go` alongside `filename.go`
+
+**Location:** Same package as implementation
+
+**Mocking Library:** `testify/mock` for interfaces
+
+**Coverage Requirement:** 70% minimum for `internal/` packages
+
+**Test Organization:**
+- `*_test.go` files next to implementation
+- Table-driven tests preferred
+- Mocks in `internal/mocks/` directory
+
+**Unit Test Examples:**
+
+```go
+// Modal component test
+func TestErrorModal_Show(t *testing.T) {
+    modal := ErrorModal{}
+    modal.Show("test error", "Test Operation", nil)
+
+    assert.True(t, modal.IsVisible)
+    assert.Equal(t, "test error", modal.Message)
+    assert.Equal(t, "Test Operation", modal.Operation)
+}
+
+// Spinner component test
+func TestSpinner_Tick(t *testing.T) {
+    spinner := Spinner{Frames: []string{"|", "/", "-", "\\"}}
+    spinner.Start("Loading...")
+
+    assert.Equal(t, 0, spinner.FrameIndex)
+    spinner.Tick()
+    assert.Equal(t, 1, spinner.FrameIndex)
+    spinner.Tick()
+    assert.Equal(t, 2, spinner.FrameIndex)
+}
+```
+
+**Manual Testing Scenarios:**
+
+1. Launch kubertino with invalid config → verify error modal appears
+2. Switch context with network disconnected → verify error modal with retry
+3. Press Enter in error modal → verify retry executes
+4. Press ESC in error modal → verify modal dismisses
+5. Select namespace → verify spinner appears during pod fetch
+6. Execute action → verify spinner appears before terminal yields
+7. Verify all errors trigger modal (not inline errors)
+8. Verify bottom log panel removed from layout
+
+**Test Coverage Goals:**
+- Modal component: 100% (simple component)
+- Spinner component: 100% (simple component)
+- TUI integration: 70%+ (focus on error handling paths)
+
+---
+
+## Change Log
+
+| Date | Version | Description | Author |
+|------|---------|-------------|---------|
+| 2025-10-12 | 1.0 | Initial draft - error modal, spinners, remove log panel | SM (Bob) |
+
+---
+
+## Dev Agent Record
+
+### Agent Model Used
+
+_To be populated by Dev Agent_
+
+### Debug Log References
+
+_To be populated by Dev Agent_
+
+### Completion Notes
+
+_To be populated by Dev Agent_
+
+### File List
+
+_To be populated by Dev Agent_
+
+---
+
+## QA Results
+
+_To be populated by QA Agent_
