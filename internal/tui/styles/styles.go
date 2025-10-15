@@ -159,4 +159,17 @@ var (
 	FavoriteNamespaceStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("226")). // Yellow/gold
 				Bold(true)
+
+	// SearchBoxStyle is used for the search input box (Story 7.2)
+	// Yellow border with rounded corners and padding
+	SearchBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("226")). // Yellow
+			Padding(0, 1)
+
+	// SearchLabelStyle is used for "Search" label above search box (Story 7.2)
+	// Yellow text with bold
+	SearchLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("226")). // Yellow
+				Bold(true)
 )

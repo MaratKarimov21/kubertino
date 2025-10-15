@@ -712,15 +712,29 @@ func (m *AppModel) adjustNamespaceViewport(listLength int) {
 		effectiveHeight = 20 // Minimum
 	}
 
+	// Story 7.2 FIX (Iteration 7): Calculate exact search box height for viewport
+	panelWidth := m.termWidth / 2
+	if panelWidth == 0 {
+		panelWidth = 40
+	}
+	contentWidth := panelWidth - 6
+	searchBoxWidth := (contentWidth * 7) / 10
+	if searchBoxWidth < 20 {
+		searchBoxWidth = 20
+	}
+	if searchBoxWidth > 50 {
+		searchBoxWidth = 50
+	}
+
+	sampleBox := styles.SearchBoxStyle.Width(searchBoxWidth).Render("_")
+	searchBoxHeight := lipgloss.Height(sampleBox)
+	fixedSearchBoxLines := 1 + 1 + searchBoxHeight // blank + label + box
+
 	headerLines := 2
 	footerLines := 2
 	scrollIndicatorLines := 1
-	searchBoxLines := 0
-	if m.searchMode {
-		searchBoxLines = 2
-	}
 
-	reservedLines := headerLines + footerLines + searchBoxLines
+	reservedLines := headerLines + footerLines + fixedSearchBoxLines
 	availableHeight := effectiveHeight - reservedLines - scrollIndicatorLines
 	if availableHeight < 1 {
 		availableHeight = 1
@@ -954,44 +968,58 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 		return s
 	}
 
+	// Story 7.2 FIX (Iteration 7): Pre-calculate search box height to reserve correct space
+	// We need to know the height BEFORE rendering to calculate padding correctly
+	panelWidth := m.termWidth / 2
+	if panelWidth == 0 {
+		panelWidth = 40 // Default for tests
+	}
+	contentWidth := panelWidth - 6            // Subtract panel border (2) + padding (4)
+	searchBoxWidth := (contentWidth * 7) / 10 // 70% of content width
+	if searchBoxWidth < 20 {
+		searchBoxWidth = 20
+	}
+	if searchBoxWidth > 50 {
+		searchBoxWidth = 50
+	}
+
+	// Measure exact height of search box with border
+	sampleBox := styles.SearchBoxStyle.Width(searchBoxWidth).Render("_")
+	searchBoxHeight := lipgloss.Height(sampleBox) // Usually 3 (top border + content + bottom border)
+
+	// Calculate total search area height: blank line + label + searchBox
+	fixedSearchBoxLines := 1 + 1 + searchBoxHeight // blank + label + box (with border)
+
+	// Calculate viewport layout constants (used for all rendering paths)
+	headerLines := 2
+	footerLines := 2          // blank line + footer text
+	scrollIndicatorLines := 1 // will be shown if list > available
+
+	// Reserve space for fixed UI elements
+	reservedLines := headerLines + footerLines + fixedSearchBoxLines
+
+	// Calculate available space for namespace items
+	availableHeight := effectiveHeight - reservedLines - scrollIndicatorLines
+	if availableHeight < 1 {
+		availableHeight = 1 // Minimum: show at least 1 namespace
+	}
+
 	// Render namespace list
+	var linesUsed int
+	var start, end int
+
 	if len(m.namespaces) == 0 {
 		s += styles.DimStyle.Render("No namespaces found") + "\n"
+		linesUsed = headerLines + 1 // header + "No namespaces found"
 	} else if m.searchMode && len(m.filteredNamespaces) == 0 {
 		// Show "no matches" message when search returns empty
 		s += styles.DimStyle.Render("No matches found") + "\n"
+		linesUsed = headerLines + 1 // header + "No matches found"
 	} else {
 		// Story 5.3: Build favorites set for marking
 		favSet := make(map[string]bool)
 		for _, fav := range m.favoriteNamespaces {
 			favSet[fav] = true
-		}
-
-		// Calculate viewport (visible window)
-		// Count exact lines used by UI elements:
-		// - Header: "Namespaces (N)" + blank line = 2 lines
-		// - Each namespace item: 1 line
-		// - Scroll indicator (if needed): 1 line
-		// - Blank line before footer: 1 line
-		// - Search box (if active): blank + search line = 2 lines
-		// - Footer: 1 line
-
-		headerLines := 2
-		footerLines := 2          // blank line + footer text
-		scrollIndicatorLines := 1 // will be shown if list > available
-		searchBoxLines := 0
-		if m.searchMode {
-			searchBoxLines = 2 // blank + search input
-		}
-
-		// Reserve space for fixed UI elements
-		reservedLines := headerLines + footerLines + searchBoxLines
-
-		// Calculate available space for namespace items
-		// We'll add scroll indicator line if needed, so reserve 1 more
-		availableHeight := effectiveHeight - reservedLines - scrollIndicatorLines
-		if availableHeight < 1 {
-			availableHeight = 1 // Minimum: show at least 1 namespace
 		}
 
 		// DEBUG: Log to see actual values
@@ -1003,8 +1031,8 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 			"listCount", listCount)
 
 		// Use stored viewport position (updated during navigation)
-		start := m.namespaceViewportStart
-		end := listCount
+		start = m.namespaceViewportStart
+		end = listCount
 
 		if listCount > availableHeight {
 			// List is longer than screen - use viewport
@@ -1024,24 +1052,28 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 
 			// Story 6.1: No star icon for favorites (removed)
 
-			// Render namespace name with highlighting if in search mode
-			var renderedName string
-			if m.searchMode && m.searchQuery != "" {
-				renderedName = m.renderNamespaceWithHighlight(ns, prefix)
-			} else {
-				renderedName = prefix + ns
-			}
-
 			// Story 6.1: Apply selection or favorite styling
+			// BUG FIX: Selected namespace should render with one style on entire line (no highlight)
 			if i == m.selectedNamespaceIndex {
 				// Selected item gets selection style (highest priority)
-				s += styles.SelectedStyle.Render(renderedName) + "\n"
-			} else if favSet[ns] {
-				// Favorite namespace gets color highlight (Story 6.1)
-				s += styles.FavoriteNamespaceStyle.Render(renderedName) + "\n"
+				// Render without highlight to avoid style conflicts
+				s += styles.SelectedStyle.Render(prefix+ns) + "\n"
 			} else {
-				// Regular namespace - no special styling
-				s += renderedName + "\n"
+				// For non-selected items: apply highlight first (if in search mode), then favorite styling
+				var renderedName string
+				if m.searchMode && m.searchQuery != "" {
+					renderedName = m.renderNamespaceWithHighlight(ns, prefix)
+				} else {
+					renderedName = prefix + ns
+				}
+
+				if favSet[ns] {
+					// Favorite namespace gets color highlight (Story 6.1)
+					s += styles.FavoriteNamespaceStyle.Render(renderedName) + "\n"
+				} else {
+					// Regular namespace - no special styling
+					s += renderedName + "\n"
+				}
 			}
 		}
 
@@ -1050,14 +1082,52 @@ func (m AppModel) renderNamespaceList(panelHeight int) string {
 			indicator := fmt.Sprintf(" [%d-%d of %d]", start+1, end, listCount)
 			s += styles.DimStyle.Render(indicator) + "\n"
 		}
+
+		// Calculate lines used
+		linesUsed = headerLines + (end - start) // header + rendered namespaces
+		if listCount > availableHeight {
+			linesUsed++ // scroll indicator
+		}
 	}
 
-	// Search input box (if search mode active)
-	if m.searchMode {
-		s += "\n"
-		searchBox := "Search: " + m.searchQuery + "_"
-		s += styles.NormalStyle.Render(searchBox) + "\n"
+	// Story 7.2 FIX (Iteration 7): Add padding to push search box to bottom
+	// Use the dynamically calculated fixedSearchBoxLines to ensure correct spacing
+	searchAndFooterLines := footerLines + fixedSearchBoxLines // footer + search box area (measured with border)
+	paddingLines := effectiveHeight - linesUsed - searchAndFooterLines
+	if paddingLines < 0 {
+		paddingLines = 0
 	}
+
+	// Add padding lines to push search box to bottom
+	for i := 0; i < paddingLines; i++ {
+		s += "\n"
+	}
+
+	// Story 7.2 FIX (Iteration 7): Render the actual search area
+	// Note: searchBoxWidth, searchBoxHeight, etc. already calculated above for layout
+	fixedSearchAreaHeight := fixedSearchBoxLines // Use pre-calculated value
+
+	// Now render the actual search area
+	var searchArea string
+	if m.searchMode {
+		// Search mode ACTIVE: render actual search box
+		searchArea += "\n" // Blank line
+
+		searchLabel := styles.SearchLabelStyle.Render("Search")
+		searchArea += searchLabel + "\n" // Label line
+
+		searchContent := m.searchQuery + "_"
+		searchBox := styles.SearchBoxStyle.Width(searchBoxWidth).Render(searchContent)
+		searchArea += searchBox + "\n" // Search box (multi-line with border)
+	} else {
+		// Search mode INACTIVE: render same number of empty lines
+		for i := 0; i < fixedSearchAreaHeight; i++ {
+			searchArea += "\n"
+		}
+	}
+
+	// Add the search area to content
+	s += searchArea
 
 	// Footer with key hints
 	s += "\n"
@@ -1209,6 +1279,18 @@ func (m AppModel) renderNamespacePanel(width, height int) string {
 	// Get the namespace list content with correct panel height
 	content := m.renderNamespaceList(contentHeight)
 
+	// Story 7.2 FIX (Iteration 6): Force exact content height
+	// Lip Gloss .Height() doesn't pad content to fill space - it only sets max height.
+	// We must manually pad content to exactly contentHeight lines to ensure panel
+	// reaches bottom edge of terminal.
+	actualLines := lipgloss.Height(content)
+	if actualLines < contentHeight {
+		// Add empty lines to fill remaining space
+		for i := actualLines; i < contentHeight; i++ {
+			content += "\n"
+		}
+	}
+
 	// Width calculation: Lip Gloss adds border (2) + padding (4) = 6 chars total
 	contentWidth := width - 6
 
@@ -1218,9 +1300,8 @@ func (m AppModel) renderNamespacePanel(width, height int) string {
 		borderStyle = styles.FocusedPanelBorderStyle
 	}
 
-	// Don't use MaxHeight - it cuts off borders
-	// Instead, renderNamespaceList already limits content to contentHeight
-	// Just apply the border and let Lip Gloss add padding + border
+	// Story 7.2: Don't use .Height() - content is already exact height
+	// Just render with width, Lip Gloss will add border+padding on top
 	return borderStyle.
 		Width(contentWidth).
 		Render(content)

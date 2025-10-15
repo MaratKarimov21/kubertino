@@ -308,7 +308,9 @@ func TestRenderNamespaceList_SearchMode(t *testing.T) {
 
 	output := model.renderNamespaceList(0)
 
-	assert.Contains(t, output, "Search: kube_", "should show search input box")
+	// Story 7.2: Search box now has yellow border and separate label
+	assert.Contains(t, output, "Search", "should show Search label")
+	assert.Contains(t, output, "kube_", "should show search query with cursor")
 	assert.Contains(t, output, "kube-system", "should show filtered namespace")
 	assert.NotContains(t, output, "default", "should not show unmatched namespace")
 	assert.Contains(t, output, "ESC: Cancel", "should show ESC hint")
@@ -333,7 +335,9 @@ func TestRenderNamespaceList_SearchModeNoMatches(t *testing.T) {
 	output := model.renderNamespaceList(0)
 
 	assert.Contains(t, output, "No matches found", "should show no matches message")
-	assert.Contains(t, output, "Search: xyz_", "should show search input box")
+	// Story 7.2: Search box now has yellow border and separate label
+	assert.Contains(t, output, "Search", "should show Search label")
+	assert.Contains(t, output, "xyz_", "should show search query with cursor")
 }
 
 func TestRenderNamespaceList_NormalMode(t *testing.T) {

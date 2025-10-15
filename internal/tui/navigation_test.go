@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/maratkarimov/kubertino/internal/k8s"
 	"github.com/maratkarimov/kubertino/internal/tui/components"
+	"github.com/maratkarimov/kubertino/internal/tui/styles"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -328,10 +330,29 @@ func TestNamespaceCursorVisibilityDuringScroll(t *testing.T) {
 
 			if tt.checkViewportBounds {
 				// Calculate available height (same as adjustNamespaceViewport)
+				// Story 7.2 FIX (Iteration 7): Dynamically measure search box height
 				headerLines := 2
 				footerLines := 2
 				scrollIndicatorLines := 1
-				reservedLines := headerLines + footerLines
+
+				// Dynamically measure search box height
+				panelWidth := tt.height / 2
+				if panelWidth == 0 {
+					panelWidth = 40
+				}
+				contentWidth := panelWidth - 6
+				searchBoxWidth := (contentWidth * 7) / 10
+				if searchBoxWidth < 20 {
+					searchBoxWidth = 20
+				}
+				if searchBoxWidth > 50 {
+					searchBoxWidth = 50
+				}
+				sampleBox := styles.SearchBoxStyle.Width(searchBoxWidth).Render("_")
+				searchBoxHeight := lipgloss.Height(sampleBox)
+				fixedSearchBoxLines := 1 + 1 + searchBoxHeight
+
+				reservedLines := headerLines + footerLines + fixedSearchBoxLines
 				availableHeight := tt.height - reservedLines - scrollIndicatorLines
 				if availableHeight < 1 {
 					availableHeight = 1
@@ -420,10 +441,29 @@ func TestNamespaceCursorCentering(t *testing.T) {
 
 			if tt.checkCentering {
 				// Calculate expected centered viewport
+				// Story 7.2 FIX (Iteration 7): Dynamically measure search box height
 				headerLines := 2
 				footerLines := 2
 				scrollIndicatorLines := 1
-				reservedLines := headerLines + footerLines
+
+				// Dynamically measure search box height
+				panelWidth := tt.height / 2
+				if panelWidth == 0 {
+					panelWidth = 40
+				}
+				contentWidth := panelWidth - 6
+				searchBoxWidth := (contentWidth * 7) / 10
+				if searchBoxWidth < 20 {
+					searchBoxWidth = 20
+				}
+				if searchBoxWidth > 50 {
+					searchBoxWidth = 50
+				}
+				sampleBox := styles.SearchBoxStyle.Width(searchBoxWidth).Render("_")
+				searchBoxHeight := lipgloss.Height(sampleBox)
+				fixedSearchBoxLines := 1 + 1 + searchBoxHeight
+
+				reservedLines := headerLines + footerLines + fixedSearchBoxLines
 				availableHeight := tt.height - reservedLines - scrollIndicatorLines
 				if availableHeight < 1 {
 					availableHeight = 1
@@ -585,11 +625,32 @@ func TestNamespaceLargeListBottomNavigation(t *testing.T) {
 
 	// Calculate expected available height (must match adjustNamespaceViewport logic)
 	// adjustNamespaceViewport uses termHeight - 4 (border+padding) as effectiveHeight
+	// Story 7.2 FIX (Iteration 7): Calculate exact search box height dynamically
 	effectiveHeight := termHeight - 4
 	headerLines := 2
 	footerLines := 2
 	scrollIndicatorLines := 1
-	reservedLines := headerLines + footerLines
+
+	// Story 7.2 FIX (Iteration 7): Dynamically measure search box height to match real implementation
+	panelWidth := termHeight / 2 // Use termHeight like in real code (will be termWidth in real app)
+	if panelWidth == 0 {
+		panelWidth = 40
+	}
+	contentWidth := panelWidth - 6
+	searchBoxWidth := (contentWidth * 7) / 10
+	if searchBoxWidth < 20 {
+		searchBoxWidth = 20
+	}
+	if searchBoxWidth > 50 {
+		searchBoxWidth = 50
+	}
+
+	// Measure exact height of search box with border
+	sampleBox := styles.SearchBoxStyle.Width(searchBoxWidth).Render("_")
+	searchBoxHeight := lipgloss.Height(sampleBox)
+	fixedSearchBoxLines := 1 + 1 + searchBoxHeight // blank + label + box (with border)
+
+	reservedLines := headerLines + footerLines + fixedSearchBoxLines
 	availableHeight := effectiveHeight - reservedLines - scrollIndicatorLines
 	if availableHeight < 1 {
 		availableHeight = 1
