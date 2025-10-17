@@ -44,11 +44,12 @@ func (e *Executor) ExecuteLocal(action config.Action, context config.Context, na
 
 	command := buf.String()
 
-	// 3. Show context box
-	fmt.Println(renderContextBox(context.Name, namespace, pod.Name, action.Name))
+	// 3. Build context box and compound command
+	contextBox := renderContextBox(context.Name, namespace, pod.Name, action.Name, command)
+	compoundCommand := buildCompoundCommand(contextBox, command)
 
-	// 4. Execute command with shell
-	cmd := exec.Command("sh", "-c", command)
+	// 4. Execute compound command with shell
+	cmd := exec.Command("sh", "-c", compoundCommand)
 	cmd.Env = os.Environ() // Preserve parent environment
 
 	// Expand kubeconfig path (tilde expansion)
@@ -97,11 +98,12 @@ func (e *Executor) PrepareLocal(action config.Action, context config.Context, na
 
 	command := buf.String()
 
-	// 3. Render context box (shows before TUI suspends)
-	fmt.Println(renderContextBox(context.Name, namespace, pod.Name, action.Name))
+	// 3. Build context box and compound command
+	contextBox := renderContextBox(context.Name, namespace, pod.Name, action.Name, command)
+	compoundCommand := buildCompoundCommand(contextBox, command)
 
 	// 4. Build command with shell
-	cmd := exec.Command("sh", "-c", command)
+	cmd := exec.Command("sh", "-c", compoundCommand)
 	cmd.Env = os.Environ() // Preserve parent environment
 
 	// Expand kubeconfig path (tilde expansion)
