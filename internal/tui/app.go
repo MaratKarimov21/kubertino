@@ -1430,11 +1430,20 @@ func (m AppModel) renderActionsPanel(width, height int) string {
 		// Empty state
 		content = styles.PlaceholderStyle.Render("No actions configured")
 	} else {
-		// Story 6.2: Multi-column layout (no scrolling, no focus)
-		// 2 columns for width < 80, 3 columns for width >= 80
-		columnCount := 2
-		if width >= 80 {
-			columnCount = 3
+		// Story 7.4: Dynamic column layout based on HEIGHT, not width
+		// Reserve space for: border (2) + padding (2) + title (1) + blank (1) + help text (2) = 8 lines
+		contentHeight := height - 8
+		if contentHeight < 1 {
+			contentHeight = 1 // Minimum
+		}
+
+		// Calculate minimum columns needed based on available height
+		// If all actions fit in one column → use 1 column
+		// Otherwise calculate: ceil(totalActions / availableHeight)
+		columnCount := 1
+		if len(m.actions) > contentHeight {
+			// Need multiple columns
+			columnCount = (len(m.actions) + contentHeight - 1) / contentHeight
 		}
 
 		itemsPerColumn := (len(m.actions) + columnCount - 1) / columnCount
@@ -1461,7 +1470,23 @@ func (m AppModel) renderActionsPanel(width, height int) string {
 			}
 		}
 
-		content = lipgloss.JoinHorizontal(lipgloss.Top, columns...)
+		// Join columns with spacing between them (Story 7.4: add column spacing)
+		if len(columns) == 0 {
+			content = ""
+		} else if len(columns) == 1 {
+			content = columns[0]
+		} else {
+			// Add spacing between columns (3 spaces)
+			var columnsWithSpacing []string
+			for i, col := range columns {
+				columnsWithSpacing = append(columnsWithSpacing, col)
+				// Add spacing after each column except the last one
+				if i < len(columns)-1 {
+					columnsWithSpacing = append(columnsWithSpacing, "   ")
+				}
+			}
+			content = lipgloss.JoinHorizontal(lipgloss.Top, columnsWithSpacing...)
+		}
 
 		// Add help text (Story 6.2)
 		helpText := styles.HelpTextStyle.Render("[key]: Execute action (works from any panel)")
