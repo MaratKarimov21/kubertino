@@ -239,6 +239,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Story 5.3: Sort namespaces with favorites first
 		m.namespaces = m.sortNamespacesWithFavorites(msg.namespaces, m.favoriteNamespaces)
 
+		// Bug Fix (Story 7.5): Ensure cursor index is valid after namespace list changes
+		if m.selectedNamespaceIndex >= len(m.namespaces) && len(m.namespaces) > 0 {
+			m.selectedNamespaceIndex = len(m.namespaces) - 1
+		}
+		if len(m.namespaces) == 0 {
+			m.selectedNamespaceIndex = 0
+		}
+
 		return m, nil
 
 	case podsFetchedMsg:
@@ -260,8 +268,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.podsError = nil
 		m.pods = msg.pods
 
-		// Story 6.2: No default pod pattern matching
-		// User must manually select a pod
+		// Bug Fix (Story 7.5): Auto-select first pod when pods are loaded and focus is on pod panel
+		// This matches the Tab handler pattern (lines 391-394)
+		if len(m.pods) > 0 && m.selectedPodIndex == -1 && m.focusedPanel == PanelPods {
+			m.selectedPodIndex = 0
+		}
 
 		return m, nil
 
@@ -368,7 +379,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentContext = &m.contexts[m.selectedContextIndex]
 				m.viewMode = viewModeNamespaceView
 				m.namespacesLoading = true
-				m.selectedNamespaceIndex = 0 // Reset namespace selection
+				// Bug Fix (Story 7.5): Don't reset namespace cursor - preserve position
+				// m.selectedNamespaceIndex = 0 // REMOVED - preserve cursor position
 				m.namespaceViewportStart = 0 // Reset viewport position
 				m.namespaces = nil           // Clear previous namespaces
 				// Story 5.3: Clear favorites (will be loaded with namespaces)
@@ -622,11 +634,34 @@ func (m *AppModel) activateSearch() {
 // deactivateSearch disables search mode and clears search state
 func (m *AppModel) deactivateSearch() {
 	slog.Debug("search mode deactivated")
+
+	// Bug Fix (Story 7.6): Preserve cursor position when exiting search
+	// Find the currently selected namespace in filtered list and map it back to full list
+	var selectedNamespace string
+	if m.filteredNamespaces != nil && m.selectedNamespaceIndex >= 0 && m.selectedNamespaceIndex < len(m.filteredNamespaces) {
+		selectedNamespace = m.filteredNamespaces[m.selectedNamespaceIndex]
+	}
+
 	m.searchMode = false
 	m.searchQuery = ""
 	m.filteredNamespaces = nil
-	// Reset selected index to 0 (don't try to preserve position)
-	m.selectedNamespaceIndex = 0
+
+	// Try to find the selected namespace in the full list and preserve cursor position
+	if selectedNamespace != "" {
+		for i, ns := range m.namespaces {
+			if ns == selectedNamespace {
+				m.selectedNamespaceIndex = i
+				// Adjust viewport to show the selected namespace
+				m.adjustNamespaceViewport(len(m.namespaces))
+				return
+			}
+		}
+	}
+
+	// Fallback: if namespace not found or none was selected, keep current index but clamp it
+	if m.selectedNamespaceIndex >= len(m.namespaces) {
+		m.selectedNamespaceIndex = 0
+	}
 	m.namespaceViewportStart = 0
 }
 

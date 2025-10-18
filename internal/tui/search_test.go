@@ -395,3 +395,71 @@ func TestGetMatchIndices_NotInSearchMode(t *testing.T) {
 
 	assert.Nil(t, indices, "should return nil when not in search mode")
 }
+
+// Story 7.6: Test cursor position preservation when exiting search mode
+func TestSearchMode_DeactivationPreservesCursor(t *testing.T) {
+	tests := []struct {
+		name                    string
+		namespaces              []string
+		filteredNamespaces      []string
+		selectedIndexInFiltered int
+		expectedIndexAfterExit  int
+	}{
+		{
+			name:                    "Cursor preserved when exiting search with matched namespace",
+			namespaces:              []string{"default", "kube-system", "production", "kubertino-app"},
+			filteredNamespaces:      []string{"kube-system", "kubertino-app"},
+			selectedIndexInFiltered: 1, // "kubertino-app" selected in filtered list
+			expectedIndexAfterExit:  3, // Should map to index 3 in full list
+		},
+		{
+			name:                    "Cursor preserved at first match",
+			namespaces:              []string{"default", "kube-system", "production"},
+			filteredNamespaces:      []string{"kube-system"},
+			selectedIndexInFiltered: 0, // "kube-system" selected
+			expectedIndexAfterExit:  1, // Should map to index 1 in full list
+		},
+		{
+			name:                    "Cursor clamped when filtered index out of bounds",
+			namespaces:              []string{"default", "production"},
+			filteredNamespaces:      []string{"default"},
+			selectedIndexInFiltered: 10, // Invalid index
+			expectedIndexAfterExit:  0,  // Should clamp to 0
+		},
+		{
+			name:                    "Empty filtered list resets to 0",
+			namespaces:              []string{"default", "production"},
+			filteredNamespaces:      []string{},
+			selectedIndexInFiltered: 0,
+			expectedIndexAfterExit:  0, // Should reset to 0
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Version: "1.0",
+				Contexts: []config.Context{
+					{Name: "test-context"},
+				},
+			}
+			model := NewAppModel(cfg, newMockAdapter())
+			model.viewMode = viewModeNamespaceView
+			model.namespaces = tt.namespaces
+			model.searchMode = true
+			model.searchQuery = "kube"
+			model.filteredNamespaces = tt.filteredNamespaces
+			model.selectedNamespaceIndex = tt.selectedIndexInFiltered
+			model.termHeight = 40 // Set height for viewport adjustment
+
+			// Press ESC to exit search mode
+			msg := tea.KeyMsg{Type: tea.KeyEsc}
+			updatedModel, _ := model.Update(msg)
+			model = updatedModel.(AppModel)
+
+			assert.False(t, model.searchMode, "search mode should be deactivated")
+			assert.Equal(t, tt.expectedIndexAfterExit, model.selectedNamespaceIndex,
+				"cursor should be at correct position after exiting search")
+		})
+	}
+}

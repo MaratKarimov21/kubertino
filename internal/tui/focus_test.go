@@ -227,3 +227,202 @@ func TestActionsPanelNeverFocused(t *testing.T) {
 }
 
 // Story 6.2 Update: Pod confirmation test removed - cursor position now equals selection (no Enter needed)
+
+// Story 7.5: Test namespace cursor preservation on context switch
+func TestContextSwitch_PreservesNamespaceCursor(t *testing.T) {
+	tests := []struct {
+		name                  string
+		initialNamespaceIndex int
+		newContextNamespaces  []string
+		expectedIndex         int
+	}{
+		{
+			name:                  "Cursor preserved when new context has same namespace count",
+			initialNamespaceIndex: 5,
+			newContextNamespaces:  []string{"ns-1", "ns-2", "ns-3", "ns-4", "ns-5", "ns-6", "ns-7"},
+			expectedIndex:         5,
+		},
+		{
+			name:                  "Cursor preserved when new context has more namespaces",
+			initialNamespaceIndex: 3,
+			newContextNamespaces:  []string{"ns-1", "ns-2", "ns-3", "ns-4", "ns-5", "ns-6", "ns-7", "ns-8"},
+			expectedIndex:         3,
+		},
+		{
+			name:                  "Cursor clamped when new context has fewer namespaces",
+			initialNamespaceIndex: 5,
+			newContextNamespaces:  []string{"ns-1", "ns-2", "ns-3"},
+			expectedIndex:         2, // Clamped to last item (index 2)
+		},
+		{
+			name:                  "Cursor at 0 preserved when new context has namespaces",
+			initialNamespaceIndex: 0,
+			newContextNamespaces:  []string{"new-ns-1", "new-ns-2"},
+			expectedIndex:         0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := &mockKubeAdapter{
+				namespaces: tt.newContextNamespaces,
+			}
+
+			// Start with context selection mode
+			cfg := &config.Config{
+				Version: "1.0",
+				Contexts: []config.Context{
+					{Name: "context-1"},
+					{Name: "context-2"},
+				},
+			}
+
+			model := NewAppModel(cfg, adapter)
+			model.viewMode = viewModeContextSelection
+			model.selectedContextIndex = 0
+			model.selectedNamespaceIndex = tt.initialNamespaceIndex
+
+			// Select context (triggers namespace fetch)
+			msg := tea.KeyMsg{Type: tea.KeyEnter}
+			updatedModel, _ := model.Update(msg)
+			m := updatedModel.(AppModel)
+
+			// Verify namespace index is preserved during context switch
+			assert.Equal(t, tt.initialNamespaceIndex, m.selectedNamespaceIndex, "Cursor position should be preserved")
+
+			// Now simulate namespace fetch completion
+			namespaceMsg := namespaceFetchedMsg{namespaces: tt.newContextNamespaces}
+			updatedModel, _ = m.Update(namespaceMsg)
+			m = updatedModel.(AppModel)
+
+			// Verify cursor is clamped to valid range
+			assert.Equal(t, tt.expectedIndex, m.selectedNamespaceIndex, "Cursor should be adjusted to valid range")
+		})
+	}
+}
+
+// Story 7.5: Test auto-select first pod on namespace selection
+func TestNamespaceSelection_AutoSelectsFirstPod(t *testing.T) {
+	tests := []struct {
+		name             string
+		pods             []k8s.Pod
+		expectedPodIndex int
+	}{
+		{
+			name: "Auto-select first pod when pods available",
+			pods: []k8s.Pod{
+				{Name: "pod-1", Status: "Running"},
+				{Name: "pod-2", Status: "Running"},
+			},
+			expectedPodIndex: 0,
+		},
+		{
+			name:             "No pod selected when no pods available",
+			pods:             []k8s.Pod{},
+			expectedPodIndex: -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := &mockKubeAdapter{
+				namespaces: []string{"default", "kube-system"},
+				pods:       tt.pods,
+			}
+
+			model := AppModel{
+				errorModal:             components.NewErrorModal(),
+				namespacesSpinner:      components.NewSpinner(),
+				podsSpinner:            components.NewSpinner(),
+				actionSpinner:          components.NewSpinner(),
+				viewMode:               viewModeNamespaceView,
+				kubeAdapter:            adapter,
+				namespaces:             []string{"default", "kube-system"},
+				selectedNamespaceIndex: 0,
+				focusedPanel:           PanelNamespaces,
+				selectedPodIndex:       -1,
+				keys:                   DefaultKeyMap(),
+			}
+
+			// Select namespace (triggers pod fetch and focus switch)
+			msg := tea.KeyMsg{Type: tea.KeyEnter}
+			updatedModel, _ := model.Update(msg)
+			m := updatedModel.(AppModel)
+
+			// Verify focus switched to pods panel
+			assert.Equal(t, PanelPods, m.focusedPanel, "Focus should switch to pods panel")
+			assert.Equal(t, -1, m.selectedPodIndex, "Pod index should be reset before fetch")
+
+			// Simulate pod fetch completion
+			podMsg := podsFetchedMsg{pods: tt.pods}
+			updatedModel, _ = m.Update(podMsg)
+			m = updatedModel.(AppModel)
+
+			// Verify first pod is auto-selected
+			assert.Equal(t, tt.expectedPodIndex, m.selectedPodIndex, "First pod should be auto-selected")
+		})
+	}
+}
+
+// Story 7.5: Test auto-select consistency between Tab and namespace selection
+func TestAutoSelectFirstPod_ConsistentBehavior(t *testing.T) {
+	pods := []k8s.Pod{
+		{Name: "pod-1", Status: "Running"},
+		{Name: "pod-2", Status: "Running"},
+	}
+
+	adapter := &mockKubeAdapter{
+		namespaces: []string{"default"},
+		pods:       pods,
+	}
+
+	t.Run("Tab key auto-selects first pod", func(t *testing.T) {
+		model := AppModel{
+			errorModal:        components.NewErrorModal(),
+			namespacesSpinner: components.NewSpinner(),
+			podsSpinner:       components.NewSpinner(),
+			actionSpinner:     components.NewSpinner(),
+			viewMode:          viewModeNamespaceView,
+			focusedPanel:      PanelNamespaces,
+			pods:              pods,
+			selectedPodIndex:  -1,
+		}
+
+		// Press Tab to switch to pods
+		msg := tea.KeyMsg{Type: tea.KeyTab}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		assert.Equal(t, PanelPods, m.focusedPanel)
+		assert.Equal(t, 0, m.selectedPodIndex, "Tab should auto-select first pod")
+	})
+
+	t.Run("Namespace selection auto-selects first pod", func(t *testing.T) {
+		model := AppModel{
+			errorModal:             components.NewErrorModal(),
+			namespacesSpinner:      components.NewSpinner(),
+			podsSpinner:            components.NewSpinner(),
+			actionSpinner:          components.NewSpinner(),
+			viewMode:               viewModeNamespaceView,
+			kubeAdapter:            adapter,
+			namespaces:             []string{"default"},
+			selectedNamespaceIndex: 0,
+			focusedPanel:           PanelNamespaces,
+			selectedPodIndex:       -1,
+			keys:                   DefaultKeyMap(),
+		}
+
+		// Select namespace
+		msg := tea.KeyMsg{Type: tea.KeyEnter}
+		updatedModel, _ := model.Update(msg)
+		m := updatedModel.(AppModel)
+
+		// Simulate pod fetch
+		podMsg := podsFetchedMsg{pods: pods}
+		updatedModel, _ = m.Update(podMsg)
+		m = updatedModel.(AppModel)
+
+		assert.Equal(t, PanelPods, m.focusedPanel)
+		assert.Equal(t, 0, m.selectedPodIndex, "Namespace selection should auto-select first pod")
+	})
+}
