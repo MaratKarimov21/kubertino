@@ -46,7 +46,7 @@ func (e *Executor) ExecuteLocal(action config.Action, context config.Context, na
 
 	// 3. Build context box and compound command
 	contextBox := renderContextBox(context.Name, namespace, pod.Name, action.Name, command)
-	compoundCommand := buildCompoundCommand(contextBox, command)
+	compoundCommand := buildCompoundCommand(contextBox, command, action.WaitOnExit)
 
 	// 4. Execute compound command with shell
 	cmd := exec.Command("sh", "-c", compoundCommand)
@@ -100,7 +100,7 @@ func (e *Executor) PrepareLocal(action config.Action, context config.Context, na
 
 	// 3. Build context box and compound command
 	contextBox := renderContextBox(context.Name, namespace, pod.Name, action.Name, command)
-	compoundCommand := buildCompoundCommand(contextBox, command)
+	compoundCommand := buildCompoundCommand(contextBox, command, action.WaitOnExit)
 
 	// 4. Build command with shell
 	cmd := exec.Command("sh", "-c", compoundCommand)

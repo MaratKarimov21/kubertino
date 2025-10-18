@@ -21,6 +21,7 @@ actions:
   - name: "Describe Pod"
     shortcut: "i"
     command: "kubectl describe pod -n {{.namespace}} {{.pod}}"
+    wait_on_exit: true  # Wait for Ctrl+D before returning to TUI (useful for fast commands)
 
 # Favorite namespaces - Format A: Per-context map
 # Favorites are displayed at the top of the namespace list
@@ -93,6 +94,12 @@ contexts:
         shortcut: "v"
         command: "kubectl logs -n {{.namespace}} {{.pod}} -f"
 
+# Optional wait_on_exit flag:
+# wait_on_exit: true   - Wait for Ctrl+D before returning to TUI (default: false)
+# Use this for fast-completing commands (describe, get, etc.) to prevent the output
+# from disappearing before you can read it. Interactive commands (exec) typically
+# don't need this flag.
+#
 # Template Variables Available in Commands:
 # {{.context}}    - Current Kubernetes context name
 # {{.namespace}}  - Selected namespace

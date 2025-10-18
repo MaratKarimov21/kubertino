@@ -189,3 +189,113 @@ func TestRenderContextBox_URLCommand(t *testing.T) {
 		t.Errorf("Expected full URL command in output")
 	}
 }
+
+// Story 7.6: Wait-on-Exit Tests
+
+func TestBuildWaitPrompt(t *testing.T) {
+	result := buildWaitPrompt()
+
+	// Verify prompt is not empty
+	if len(result) == 0 {
+		t.Errorf("Expected non-empty wait prompt")
+	}
+
+	// Verify prompt contains key text
+	if !strings.Contains(result, "Press Ctrl+D") {
+		t.Errorf("Expected wait prompt to contain 'Press Ctrl+D'")
+	}
+	if !strings.Contains(result, "Command finished") {
+		t.Errorf("Expected wait prompt to contain 'Command finished'")
+	}
+}
+
+func TestBuildCompoundCommand_WaitOnExit_False(t *testing.T) {
+	contextBox := "Test Context Box"
+	command := "echo hello"
+
+	result := buildCompoundCommand(contextBox, command, false)
+
+	// Verify command is present
+	if !strings.Contains(result, command) {
+		t.Errorf("Expected command '%s' in output", command)
+	}
+
+	// Verify printf with context box is present
+	if !strings.Contains(result, "printf") {
+		t.Errorf("Expected printf command in output")
+	}
+
+	// Verify NO wait logic is present
+	if strings.Contains(result, "cat > /dev/null") {
+		t.Errorf("Expected NO wait logic when waitOnExit is false")
+	}
+}
+
+func TestBuildCompoundCommand_WaitOnExit_True(t *testing.T) {
+	contextBox := "Test Context Box"
+	command := "kubectl describe pod test-pod"
+
+	result := buildCompoundCommand(contextBox, command, true)
+
+	// Verify command is present
+	if !strings.Contains(result, command) {
+		t.Errorf("Expected command '%s' in output", command)
+	}
+
+	// Verify printf with context box is present
+	if !strings.Contains(result, "printf") {
+		t.Errorf("Expected printf command in output")
+	}
+
+	// Verify wait logic IS present
+	if !strings.Contains(result, "cat > /dev/null") {
+		t.Errorf("Expected wait logic (cat > /dev/null) when waitOnExit is true")
+	}
+
+	// Verify wait prompt message is present
+	if !strings.Contains(result, "Command finished") {
+		t.Errorf("Expected wait prompt message in output")
+	}
+}
+
+func TestBuildCompoundCommand_ShellEscaping_WithSingleQuotes(t *testing.T) {
+	contextBox := "Context with 'single quotes' in text"
+	command := "echo test"
+
+	result := buildCompoundCommand(contextBox, command, false)
+
+	// Verify shell escaping is applied (single quotes should be escaped)
+	// The escaping pattern is: ' becomes '\''
+	if !strings.Contains(result, "'\\''") {
+		t.Errorf("Expected single quotes to be escaped in context box")
+	}
+
+	// Verify command is still present
+	if !strings.Contains(result, command) {
+		t.Errorf("Expected command '%s' in output", command)
+	}
+}
+
+func TestBuildCompoundCommand_WaitOnExit_ShellEscaping(t *testing.T) {
+	// Test that wait prompt is properly escaped when it contains special characters
+	contextBox := "Test Box"
+	command := "echo test"
+
+	result := buildCompoundCommand(contextBox, command, true)
+
+	// Verify the wait prompt is properly escaped for shell
+	// The wait prompt should be within single quotes and properly escaped
+	if !strings.Contains(result, "printf") {
+		t.Errorf("Expected printf for wait prompt")
+	}
+
+	// Verify wait logic structure
+	if !strings.Contains(result, "&&") {
+		t.Errorf("Expected && to chain commands")
+	}
+
+	// Verify braces for wait logic grouping
+	if !strings.Contains(result, "{") || !strings.Contains(result, "}") {
+		t.Errorf("Expected braces for wait logic grouping")
+	}
+}

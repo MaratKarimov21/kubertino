@@ -19,6 +19,7 @@ type Context struct {
 type Action struct {
 	Name        string `yaml:"name"`
 	Shortcut    string `yaml:"shortcut"`
-	Command     string `yaml:"command"`               // Template with {{.context}}, {{.namespace}}, {{.pod}}
-	Destructive bool   `yaml:"destructive,omitempty"` // Requires confirmation (optional)
+	Command     string `yaml:"command"`                // Template with {{.context}}, {{.namespace}}, {{.pod}}
+	Destructive bool   `yaml:"destructive,omitempty"`  // Requires confirmation (optional)
+	WaitOnExit  bool   `yaml:"wait_on_exit,omitempty"` // Wait for Ctrl+D before returning to TUI (optional, default: false)
 }
