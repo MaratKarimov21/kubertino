@@ -30,6 +30,7 @@ const (
 type KubeAdapter interface {
 	GetNamespaces(context string) ([]string, error)
 	GetPods(context, namespace string) ([]k8s.Pod, error)
+	SwitchContext(context string) error
 }
 
 // namespaceFetchedMsg is sent when namespaces are fetched
@@ -375,8 +376,22 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if KeyMatches(msg, m.keys.Enter) {
-				// Select context and transition to namespace view
-				m.currentContext = &m.contexts[m.selectedContextIndex]
+				// Select context and switch kubectl context
+				selectedCtx := &m.contexts[m.selectedContextIndex]
+
+				// Switch kubectl context before transitioning to namespace view
+				if err := m.kubeAdapter.SwitchContext(selectedCtx.Name); err != nil {
+					// Show error modal if context switch fails
+					m.errorModal.Show(
+						fmt.Sprintf("Failed to switch kubectl context: %s", err.Error()),
+						"Context Switch",
+						nil,
+					)
+					return m, nil
+				}
+
+				// Context switched successfully - proceed with existing logic
+				m.currentContext = selectedCtx
 				m.viewMode = viewModeNamespaceView
 				m.namespacesLoading = true
 				// Bug Fix (Story 7.5): Don't reset namespace cursor - preserve position
@@ -386,7 +401,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Story 5.3: Clear favorites (will be loaded with namespaces)
 				m.favoriteNamespaces = nil
 				// Load actions from context (Story 6.2)
-				m.actions = m.currentContext.Actions
+				m.actions = selectedCtx.Actions
 				// Story 6.3: Start namespace spinner
 				m.namespacesSpinner.Start("Loading namespaces...")
 				return m, tea.Batch(m.fetchNamespacesCmd(), components.TickCmd())

@@ -418,3 +418,55 @@ func TestNamespaceJSONParsing(t *testing.T) {
 	assert.Equal(t, "production", response.Items[2].Metadata.Name)
 	assert.Equal(t, "staging", response.Items[3].Metadata.Name)
 }
+
+func TestSwitchContext_ValidationError(t *testing.T) {
+	adapter := NewKubectlAdapter("~/.kube/config")
+
+	t.Run("rejects empty context name", func(t *testing.T) {
+		err := adapter.SwitchContext("")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "cannot be empty")
+	})
+
+	t.Run("rejects invalid context name with semicolon", func(t *testing.T) {
+		err := adapter.SwitchContext("context;rm -rf /")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid context name")
+	})
+
+	t.Run("rejects invalid context name with pipe", func(t *testing.T) {
+		err := adapter.SwitchContext("context|whoami")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid context name")
+	})
+
+	t.Run("rejects invalid context name with ampersand", func(t *testing.T) {
+		err := adapter.SwitchContext("context&background")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid context name")
+	})
+
+	t.Run("accepts valid context names", func(t *testing.T) {
+		// Test that validation passes for valid context names
+		// Note: These will fail at kubectl execution (expected), but should pass validation
+		validNames := []string{
+			"minikube",
+			"prod-cluster",
+			"test_context",
+			"cluster.prod",
+			"yangiretail-stg/user",
+			"cluster/user@example.com",
+			"marat.k+stg@yangi.uz",
+			"gke:us-west1:cluster",
+		}
+
+		for _, name := range validNames {
+			err := adapter.SwitchContext(name)
+			// We expect kubectl not found or similar, but NOT validation error
+			if err != nil {
+				assert.NotContains(t, err.Error(), "invalid context name",
+					"Context name '%s' should pass validation", name)
+			}
+		}
+	})
+}

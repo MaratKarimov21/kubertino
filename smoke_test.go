@@ -26,6 +26,10 @@ func (m *mockAdapter) GetPods(context, namespace string) ([]k8s.Pod, error) {
 	}, nil
 }
 
+func (m *mockAdapter) SwitchContext(context string) error {
+	return nil
+}
+
 func (m *mockAdapter) ExecInPod(context, namespace, pod, container, command string) (*exec.Cmd, error) {
 	return exec.Command("echo", "mock"), nil
 }

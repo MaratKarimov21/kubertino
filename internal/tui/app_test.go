@@ -33,6 +33,13 @@ func (m *mockKubeAdapter) GetPods(context, namespace string) ([]k8s.Pod, error) 
 	return m.pods, nil
 }
 
+func (m *mockKubeAdapter) SwitchContext(context string) error {
+	if m.err != nil {
+		return m.err
+	}
+	return nil
+}
+
 func (m *mockKubeAdapter) ExecInPod(context, namespace, pod, container, command string) (*exec.Cmd, error) {
 	if m.err != nil {
 		return nil, m.err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -233,6 +234,58 @@ func (k *KubectlAdapter) GetPods(ctxName, namespace string) ([]Pod, error) {
 	}
 
 	return pods, nil
+}
+
+// SwitchContext switches the current kubectl context using kubectl config use-context
+func (k *KubectlAdapter) SwitchContext(ctxName string) error {
+	// Validate context name for security
+	if err := validateContextName(ctxName); err != nil {
+		return err
+	}
+
+	// Find kubectl in PATH
+	kubectlPath, err := exec.LookPath("kubectl")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrKubectlNotFound, err)
+	}
+
+	// Expand kubeconfig path
+	kubeconfigPath, err := expandPath(k.kubeconfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to expand kubeconfig path: %w", err)
+	}
+
+	// Create context with timeout (5 seconds for quick operation)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Execute kubectl config use-context command
+	cmd := exec.CommandContext(ctx, kubectlPath, "--kubeconfig", kubeconfigPath, "config", "use-context", ctxName)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		// Check for specific error types
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("%w: kubectl command timed out after 5s", ErrTimeout)
+		}
+
+		// Check for exit error to extract stderr
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := string(exitErr.Stderr)
+
+			// Check for context not found
+			if strings.Contains(stderr, "context") && (strings.Contains(stderr, "not found") || strings.Contains(stderr, "does not exist")) {
+				return fmt.Errorf("%w: %s", ErrContextNotFound, ctxName)
+			}
+
+			return fmt.Errorf("kubectl config use-context failed: %s", stderr)
+		}
+
+		return fmt.Errorf("failed to execute kubectl: %w", err)
+	}
+
+	slog.Info("kubectl context switched", "context", ctxName, "output", string(output))
+	return nil
 }
 
 // validateNamespaceName validates a namespace name against allowed characters
