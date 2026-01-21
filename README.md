@@ -2,6 +2,11 @@
 
 A fast, lazy-loading Kubernetes TUI (Terminal User Interface) tool built with Go and Bubble Tea. Kubertino provides a performant alternative to k9s, optimized for developers working with large Kubernetes clusters.
 
+<img width="1272" height="784" alt="Снимок экрана 2026-01-21 в 13 04 46" src="https://github.com/user-attachments/assets/e4a72906-0a7d-4e7f-b621-348d384c8df2" />
+<img width="932" height="632" alt="Снимок экрана 2026-01-21 в 13 21 17" src="https://github.com/user-attachments/assets/93d72be6-32f9-4f9e-95a8-1630248cb167" />
+<img width="1277" height="783" alt="Снимок экрана 2025-10-12 в 23 17 27" src="https://github.com/user-attachments/assets/422d780d-8b9a-442f-9849-692578dee2b2" />
+
+
 ## Overview
 
 Kubertino offers:
